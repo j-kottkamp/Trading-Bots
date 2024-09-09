@@ -90,6 +90,17 @@ def CalculateReturn(price):
     sys_loss = price.Sys_Return[price.Sys_Return < 1.0].count()
     sys_winrate = round(sys_win / (sys_win + sys_loss) * 100, 2)
     
+    # Calculate average return of winning trades
+    winning_trades = price.Sys_Return[price.Sys_Return > 1.0]
+    avg_win_return = (winning_trades - 1).mean() * 100
+
+    # Calculate average return of losing trades
+    losing_trades = price.Sys_Return[price.Sys_Return < 1.0]
+    avg_loss_return = (losing_trades - 1).mean() * 100
+
+    # Calculate average return of all trades
+    avg_trade_return = (price.Sys_Return - 1).mean() * 100
+    
     # Sharpe Ratios
     daily_bench_ret = price['Return'].dropna() - 1
     bench_return_mean = daily_bench_ret.mean()
@@ -116,6 +127,9 @@ def CalculateReturn(price):
     print(f'Trades Won: {sys_win}')
     print(f'Trades Loss: {sys_loss}')
     print(f'Winrate: {sys_winrate}%\n')
+    print(f'Average winning trade return: {avg_win_return:.2f}%')
+    print(f'Average losing trade return: {avg_loss_return:.2f}%')
+    print(f'Average trade return: {avg_trade_return:.2f}%')
         
     
     
@@ -132,7 +146,7 @@ def PlotReturn(price):
 
     
 def main():
-    price = StockData(2023, 2030)
+    price = StockData(2000, 2025)
         
     CalculateIchiMoku(price)
         

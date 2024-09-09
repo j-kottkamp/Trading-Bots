@@ -83,6 +83,7 @@ def CalculateReturn(price):
     price['Sys_Bal'] = (STARTING_BALANCE * price.Sys_Return.cumprod())
     price['Sys_Peak'] = price.Sys_Bal.cummax()
     price['Sys_DD'] = price.Sys_Bal - price.Sys_Peak
+    
     # Calculate average return of winning trades
     winning_trades = price.Sys_Return[price.Sys_Return > 1.0]
     avg_win_return = (winning_trades - 1).mean() * 100
@@ -145,7 +146,7 @@ def PlotReturn(price):
 
     
 def main():
-    price = StockData(2000, 2024)
+    price = StockData(2000, 2025)
         
     CalculateIchiMoku(price)
         
