@@ -12,7 +12,7 @@ def StockData(start_year, end_year):
     global YEARS
     
     SYMBOL = "SPY"
-    STARTING_BALANCE = 10000
+    STARTING_BALANCE = 1000
 
     START = datetime.datetime(start_year, 1, 1)
     END = datetime.datetime(end_year, 1, 1)
@@ -41,21 +41,27 @@ def CalculateIchiMoku(price):
     
     # Calculate Chikou Span (Lagging Span)
     price['Lagging_Close'] = price['Close'].shift(-26)
+    
+    # Get the high and low of the lagging prices last 5
+    price['Lagging_High'] = price['Lagging_Close'].rolling(window=5).max()
+    price['Lagging_Low'] = price['Lagging_Close'].rolling(window=5).min()
 
 
+
+    
 def SetStrategy(price):
     price["Long"] = np.where(
         (price.Fast_IM > price.Slow_IM) & 
-        ((price.Close > price.Bullish_Cloud) & (price.Close > price.Bearish_Cloud)) &
-        (price.Lagging_Close > price.Close), True, False
+        (price.Lagging_Low > price.Close), True, False
     )
     
     price["Short"] = np.where(
         (price.Fast_IM < price.Slow_IM) & 
-        ((price.Close < price.Bullish_Cloud) & (price.Close < price.Bearish_Cloud)) &
-        (price.Lagging_Close < price.Close), True, False
+        (price.Lagging_High < price.Close), True, False
     )
 
+    
+    
 def CalculateReturn(price):
     # Benchmark Performance
     price['Return'] = price.Close / price.Close.shift(1)
@@ -123,16 +129,17 @@ def PlotReturn(price):
     plt.legend()
     plt.show()
     
+
     
 def main():
-    price = StockData(2002, 2025)
-    
+    price = StockData(2023, 2030)
+        
     CalculateIchiMoku(price)
-    
+        
     SetStrategy(price)
-    
+        
     CalculateReturn(price)
-    
+        
     PlotReturn(price)
     
 
