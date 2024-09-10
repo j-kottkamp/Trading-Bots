@@ -12,7 +12,7 @@ def StockData(start_year, end_year):
     global YEARS
     
     SYMBOL = "QQQ"
-    STARTING_BALANCE = 10000
+    STARTING_BALANCE = 1000
 
     START = datetime.datetime(start_year, 1, 1)
     END = datetime.datetime(end_year, 1, 1)
@@ -23,15 +23,13 @@ def StockData(start_year, end_year):
     
     return price
 
-
-
     
 def CalculateIchiMoku(price):
     # Calculate Tenkan-sen (Conversion Line)
-    price['Fast_IM'] = (price['High'].rolling(window=9).max() + price['Low'].rolling(window=9).min()) / 2
+    price['Fast_IM'] = (price['High'].rolling(window=14).max() + price['Low'].rolling(window=14).min()) / 2
     
     # Calculate Kijun-sen (Base Line)
-    price['Slow_IM'] = (price['High'].rolling(window=26).max() + price['Low'].rolling(window=26).min()) / 2
+    price['Slow_IM'] = (price['High'].rolling(window=30).max() + price['Low'].rolling(window=30).min()) / 2
     
     # Calculate Senkou Span A (bullish when upper)
     price['Bullish_Cloud'] = ((price['Fast_IM'] + price['Slow_IM']) / 2).shift(26)
@@ -43,22 +41,35 @@ def CalculateIchiMoku(price):
     price['Lagging_Close'] = price['Close'].shift(-26)
     
     # Get the high and low of the lagging prices last 5
-    price['Lagging_High'] = price['Lagging_Close'].rolling(window=26).max()
-    price['Lagging_Low'] = price['Lagging_Close'].rolling(window=26).min()
+    price['Lagging_High'] = price['Lagging_Close'].rolling(window=42).max()
+    price['Lagging_Low'] = price['Lagging_Close'].rolling(window=42).min()
 
 
-
-    
-def SetStrategy(price):
+def SetStrategy1(price):
     price["Long"] = np.where(
         (price.Fast_IM > price.Slow_IM) & 
-        (price.Lagging_Low > price.Close), True, False
+        (price.Lagging_High.shift(-26) > price.Close) & 
+        (price.Close > price.Bullish_Cloud), True, False
     )
     
     price["Short"] = np.where(
         (price.Fast_IM < price.Slow_IM) & 
-        (price.Lagging_High < price.Close), True, False
+        (price.Lagging_Low.shift(-26) < price.Close) &
+        (price.Close < price.Bearish_Cloud), True, False
     )
+def SetStrategy2(price):
+    price["Long"] = np.where(
+        (price.Fast_IM > price.Slow_IM) & 
+        (price.Lagging_Low.shift(-26) > price.Close) & 
+        (price.Close > price.Bearish_Cloud), True, False
+    )
+    
+    price["Short"] = np.where(
+        (price.Fast_IM < price.Slow_IM) & 
+        (price.Lagging_High.shift(-26) < price.Close) &
+        (price.Close < price.Bullish_Cloud), True, False
+    )
+
     
     
 def GetSignalDates(price):
@@ -103,9 +114,9 @@ def GetSignalDates(price):
         exit_date = short_exit_dates[i] if i < len(short_exit_dates) else "Still in position"
         print(f"Entry: {short_entry_dates[i].date()}, Exit: {exit_date}")
 
-
-        
+   
 def CalculateReturn(price):
+    
     # Benchmark Performance
     price['Return'] = price.Close / price.Close.shift(1)
     price.Return.iat[0] = 1
@@ -168,15 +179,12 @@ def CalculateReturn(price):
     print(f'System Sharpe Ratio: {sharpe_ratio_sys:.2f}')
     print(f'Time in Market: {sys_in_market}%')
     print(f'Trades Won: {sys_win}')
-    print(f'Trades Loss: {sys_loss}')
+    print(f'Trades Lost: {sys_loss}')
     print(f'Winrate: {sys_winrate}%\n')
     print(f'Average winning trade return: {avg_win_return:.2f}%')
     print(f'Average losing trade return: {avg_loss_return:.2f}%')
     print(f'Average trade return: {avg_trade_return:.2f}%')
         
-    
-    
-    
   
 def PlotReturn(price):
     style.use('dark_background')
@@ -186,22 +194,17 @@ def PlotReturn(price):
     plt.legend()
     plt.show()
     
+# Set strategy and params before testing
 
-    
 def main():
-    price = StockData(2021, 2025)
-        
-    CalculateIchiMoku(price)
-        
-    SetStrategy(price)
-        
-    CalculateReturn(price)
-        
+    price = StockData(2000, 2025) 
+    CalculateIchiMoku(price) 
+    SetStrategy2(price) 
+    CalculateReturn(price) 
     PlotReturn(price)
-    
-    GetSignalDates(price)
-    
 
-
+    
+    
+   
 if __name__ == '__main__':
     main()
