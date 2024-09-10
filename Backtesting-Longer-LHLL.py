@@ -12,7 +12,7 @@ def StockData(start_year, end_year):
     global YEARS
     
     SYMBOL = "QQQ"
-    STARTING_BALANCE = 1000
+    STARTING_BALANCE = 10000
 
     START = datetime.datetime(start_year, 1, 1)
     END = datetime.datetime(end_year, 1, 1)
@@ -59,11 +59,52 @@ def SetStrategy(price):
         (price.Fast_IM < price.Slow_IM) & 
         (price.Lagging_High < price.Close), True, False
     )
+    
+    
+def GetSignalDates(price):
+    long_entry_dates = []
+    long_exit_dates = []
+    short_entry_dates = []
+    short_exit_dates = []
+    
+    # Track whether currently in a long or short position
+    in_long = False
+    in_short = False
+    
+    for i in range(1, len(price)):
+        # Long entry: when Long becomes True and we are not already in a long position
+        if price.Long.iloc[i] == True and not in_long:
+            long_entry_dates.append(price.index[i])
+            in_long = True  # Now in a long position
+        
+        # Long exit: when Long switches back to False and we were in a long position
+        if price.Long.iloc[i] == False and in_long:
+            long_exit_dates.append(price.index[i])
+            in_long = False  # Exit long position
 
+        # Short entry: when Short becomes True and we are not already in a short position
+        if price.Short.iloc[i] == True and not in_short:
+            short_entry_dates.append(price.index[i])
+            in_short = True  # Now in a short position
+        
+        # Short exit: when Short switches back to False and we were in a short position
+        if price.Short.iloc[i] == False and in_short:
+            short_exit_dates.append(price.index[i])
+            in_short = False  # Exit short position
     
-    
-    
-    
+    # Display the results
+    print("Long Signals:")
+    for i in range(len(long_entry_dates)):
+        exit_date = long_exit_dates[i] if i < len(long_exit_dates) else "Still in position"
+        print(f"Entry: {long_entry_dates[i].date()}, Exit: {exit_date}")
+
+    print("\nShort Signals:")
+    for i in range(len(short_entry_dates)):
+        exit_date = short_exit_dates[i] if i < len(short_exit_dates) else "Still in position"
+        print(f"Entry: {short_entry_dates[i].date()}, Exit: {exit_date}")
+
+
+        
 def CalculateReturn(price):
     # Benchmark Performance
     price['Return'] = price.Close / price.Close.shift(1)
@@ -84,6 +125,14 @@ def CalculateReturn(price):
     price['Sys_Peak'] = price.Sys_Bal.cummax()
     price['Sys_DD'] = price.Sys_Bal - price.Sys_Peak
     
+    sys_return = round(((price.Sys_Bal.iloc[-1]/price.Sys_Bal.iloc[0]) - 1) * 100, 2)
+    sys_dd = round(((price.Sys_DD / price.Sys_Peak).min()) * 100, 2)
+    sys_cagr = round(((((price.Sys_Bal.iloc[-1]/price.Sys_Bal.iloc[0])**(1/YEARS))-1)*100), 2)
+    sys_in_market = round((price.Long.value_counts().loc[True] / len(price)) * 100)
+    sys_win = price.Sys_Return[price.Sys_Return > 1.0].count()
+    sys_loss = price.Sys_Return[price.Sys_Return < 1.0].count()
+    sys_winrate = round(sys_win / (sys_win + sys_loss) * 100, 2)
+    
     # Calculate average return of winning trades
     winning_trades = price.Sys_Return[price.Sys_Return > 1.0]
     avg_win_return = (winning_trades - 1).mean() * 100
@@ -94,14 +143,6 @@ def CalculateReturn(price):
 
     # Calculate average return of all trades
     avg_trade_return = (price.Sys_Return - 1).mean() * 100
-    
-    sys_return = round(((price.Sys_Bal.iloc[-1]/price.Sys_Bal.iloc[0]) - 1) * 100, 2)
-    sys_dd = round(((price.Sys_DD / price.Sys_Peak).min()) * 100, 2)
-    sys_cagr = round(((((price.Sys_Bal.iloc[-1]/price.Sys_Bal.iloc[0])**(1/YEARS))-1)*100), 2)
-    sys_in_market = round((price.Long.value_counts().loc[True] / len(price)) * 100)
-    sys_win = price.Sys_Return[price.Sys_Return > 1.0].count()
-    sys_loss = price.Sys_Return[price.Sys_Return < 1.0].count()
-    sys_winrate = round(sys_win / (sys_win + sys_loss) * 100, 2)
     
     # Sharpe Ratios
     daily_bench_ret = price['Return'].dropna() - 1
@@ -132,6 +173,8 @@ def CalculateReturn(price):
     print(f'Average winning trade return: {avg_win_return:.2f}%')
     print(f'Average losing trade return: {avg_loss_return:.2f}%')
     print(f'Average trade return: {avg_trade_return:.2f}%')
+        
+    
     
     
   
@@ -142,11 +185,11 @@ def PlotReturn(price):
     plt.plot(price.Sys_Bal, label='System', color="g")
     plt.legend()
     plt.show()
-
+    
 
     
 def main():
-    price = StockData(2000, 2025)
+    price = StockData(2021, 2025)
         
     CalculateIchiMoku(price)
         
@@ -155,6 +198,8 @@ def main():
     CalculateReturn(price)
         
     PlotReturn(price)
+    
+    GetSignalDates(price)
     
 
 
