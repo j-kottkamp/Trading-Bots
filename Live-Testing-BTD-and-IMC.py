@@ -62,8 +62,20 @@ def StockDataSPY(start_year, end_year):
     
     return priceSPY
 
+def StockDataQQQ(start_year, end_year):
+    SYMBOL = "QQQ"
 
-def CalculateIchiMoku(priceNDAQ):
+    START = datetime.datetime(start_year, 1, 1)
+    END = datetime.datetime(end_year, 1, 1)
+    YEARS = (END - START).days / 365.25
+
+    priceQQQ = yf.download(SYMBOL, start=START, end=END)
+    priceQQQ = priceQQQ.drop(['Volume', 'Adj Close'], axis=1)
+    
+    return priceQQQ
+
+
+def CalculateIchiMokuNDAQ(priceNDAQ):
     # Calculate Tenkan-sen (Conversion Line)
     priceNDAQ['Fast_IM'] = (priceNDAQ['High'].rolling(window=9).max() + priceNDAQ['Low'].rolling(window=9).min()) / 2
     
@@ -91,8 +103,39 @@ def CalculateBTD(priceSPY):
     #% distance between close and low
     priceSPY['Pct'] = (priceSPY.Dist / priceSPY.Range) * 100
 
-
-def SetStrategyIMC(priceNDAQ):
+def CalculateIchiMokuQQQ(priceQQQ):
+    # Calculate Tenkan-sen (Conversion Line)
+    priceQQQ['Fast_IM'] = (priceQQQ['High'].rolling(window=9).max() + priceQQQ['Low'].rolling(window=9).min()) / 2
+    
+    # Calculate Kijun-sen (Base Line)
+    priceQQQ['Slow_IM'] = (priceQQQ['High'].rolling(window=26).max() + priceQQQ['Low'].rolling(window=26).min()) / 2
+    
+    # Calculate Senkou Span A (bullish when upper)
+    priceQQQ['Bullish_Cloud'] = ((priceQQQ['Fast_IM'] + priceQQQ['Slow_IM']) / 2).shift(26)
+    
+    # Calculate Senkou Span B (bearish when upper)
+    priceQQQ['Bearish_Cloud'] = ((priceQQQ['High'].rolling(window=52).max() + priceQQQ['Low'].rolling(window=52).min()) / 2).shift(26)
+    
+    # Calculate Chikou Span (Lagging Span)
+    priceQQQ['Lagging_Close'] = priceQQQ['Close'].shift(-26)
+    
+    # Get the high and low of the lagging priceQQQs last 5
+    priceQQQ['Lagging_High'] = priceQQQ['Lagging_Close'].rolling(window=26).max()
+    priceQQQ['Lagging_Low'] = priceQQQ['Lagging_Close'].rolling(window=26).min()
+    
+    
+def SetStrategyIMC_QQQ(priceQQQ):
+    priceQQQ["Long"] = np.where(
+        (priceQQQ.Fast_IM > priceQQQ.Slow_IM) & 
+        (priceQQQ.Lagging_Low > priceQQQ.Close), True, False
+    )
+    
+    priceQQQ["Short"] = np.where(
+        (priceQQQ.Fast_IM < priceQQQ.Slow_IM) & 
+        (priceQQQ.Lagging_High < priceQQQ.Close), True, False
+    )
+    
+def SetStrategyIMC_NDAQ(priceNDAQ):
     priceNDAQ["Long"] = np.where(
         (priceNDAQ.Fast_IM > priceNDAQ.Slow_IM) & 
         (priceNDAQ.Lagging_Low > priceNDAQ.Close), True, False
@@ -110,7 +153,7 @@ def SetStrategyBTD(priceSPY):
     priceSPY['Long'] = np.logical_and((priceSPY.Pct < PCT_THRESH), (priceSPY.Range > RANGE_THRESH))
 
 
-def  Execute_IMC(priceNDAQ):
+def  Execute_IMC_NDAQ(priceNDAQ):
     if priceNDAQ['Long'].iloc[-1] == True and not is_position_open("NDAQ"):
         print(f"Ichimoku Cloud found Signal\nPosition: Long")
         place_stock_order("NDAQ", '7', 'buy', type='market', time_in_force='gtc')
@@ -145,19 +188,46 @@ def Execute_BTD(priceSPY):
         print(f"Dip located\nStaying in Trade")
     elif priceSPY['Long'].iloc[-1] == False and not is_position_open("SPY"):
         print(f"No Dip located\nNo open Positions")
+
+def  Execute_IMC_QQQ(priceQQQ):
+    if priceQQQ['Long'].iloc[-1] == True and not is_position_open("QQQ"):
+        print(f"Ichimoku Cloud found Signal\nPosition: Long")
+        place_stock_order("QQQ", '7', 'buy', type='market', time_in_force='gtc')
+    elif priceQQQ['Long'].iloc[-1] == True and is_position_open("QQQ"):
+        print(f"Ichimoku Cloud staying in Trade\nPosition: Long")
+    elif priceQQQ['Long'].iloc[-1] == False and not is_position_open("QQQ"):
+        print(f"Ichimoku Cloud found no Long Signal\nNo open Positions")
+    elif priceQQQ['Long'].iloc[-1] == False and is_position_open("QQQ"):
+        print(f"Ichimoku Cloud found no Signal\nClosing all Long Positions")
+        place_stock_order("QQQ", '7', 'sell', type='market', time_in_force='gtc')
         
+        
+    if priceQQQ['Short'].iloc[-1] == True and not is_position_open("QQQ"):
+        print(f"Ichimoku Cloud found Signal\nPosition: Short")
+        place_stock_order("QQQ", '7', 'sell', type='market', time_in_force='gtc')
+    elif priceQQQ['Short'].iloc[-1] == True and is_position_open("QQQ"):
+        print(f"Ichimoku Cloud staying in Trade\nPosition: Short")
+    elif priceQQQ['Short'].iloc[-1] == False and not is_position_open("QQQ"):
+        print(f"Ichimoku Cloud found no Short Signal\nNo open Positions")
+    elif priceQQQ['Short'].iloc[-1] == False and is_position_open("QQQ"):
+        print(f"Ichimoku Cloud found no Signal\nClosing all Short Positions")
+        place_stock_order("QQQ", '7', 'buy', type='market', time_in_force='gtc')
 
 def main():
     priceNDAQ = StockDataNDAQ(2000, 2099)
-    CalculateIchiMoku(priceNDAQ)
-    SetStrategyIMC(priceNDAQ)
-    Execute_IMC(priceNDAQ)
+    CalculateIchiMokuNDAQ(priceNDAQ)
+    SetStrategyIMC_NDAQ(priceNDAQ)
+    Execute_IMC_NDAQ(priceNDAQ)
     
     priceSPY = StockDataSPY(2000, 2099)
     CalculateBTD(priceSPY)
     SetStrategyBTD(priceSPY)
     Execute_BTD(priceSPY)
     
+    priceQQQ = StockDataQQQ(2000, 2099)
+    CalculateIchiMokuQQQ(priceQQQ)
+    SetStrategyIMC_QQQ(priceQQQ)
+    Execute_IMC_QQQ(priceQQQ)
     
 
 
