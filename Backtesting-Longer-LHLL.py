@@ -24,12 +24,12 @@ def StockData(start_year, end_year):
     return price
 
     
-def CalculateIchiMoku(price):
+def CalculateIchiMoku(price, windowFastIM, windowSlowIM, windowLagging):
     # Calculate Tenkan-sen (Conversion Line)
-    price['Fast_IM'] = (price['High'].rolling(window=14).max() + price['Low'].rolling(window=14).min()) / 2
+    price['Fast_IM'] = (price['High'].rolling(window=windowFastIM).max() + price['Low'].rolling(window=windowFastIM).min()) / 2
     
     # Calculate Kijun-sen (Base Line)
-    price['Slow_IM'] = (price['High'].rolling(window=30).max() + price['Low'].rolling(window=30).min()) / 2
+    price['Slow_IM'] = (price['High'].rolling(window=windowSlowIM).max() + price['Low'].rolling(window=windowSlowIM).min()) / 2
     
     # Calculate Senkou Span A (bullish when upper)
     price['Bullish_Cloud'] = ((price['Fast_IM'] + price['Slow_IM']) / 2).shift(26)
@@ -41,8 +41,8 @@ def CalculateIchiMoku(price):
     price['Lagging_Close'] = price['Close'].shift(-26)
     
     # Get the high and low of the lagging prices last 5
-    price['Lagging_High'] = price['Lagging_Close'].rolling(window=42).max()
-    price['Lagging_Low'] = price['Lagging_Close'].rolling(window=42).min()
+    price['Lagging_High'] = price['Lagging_Close'].rolling(window=windowLagging).max()
+    price['Lagging_Low'] = price['Lagging_Close'].rolling(window=windowLagging).min()
 
 
 def SetStrategy1(price):
@@ -197,9 +197,9 @@ def PlotReturn(price):
 # Set strategy and params before testing
 
 def main():
-    price = StockData(2000, 2025) 
-    CalculateIchiMoku(price) 
-    SetStrategy2(price) 
+    price = StockData(2021, 2025) 
+    CalculateIchiMoku(price, 12, 81, 53) 
+    SetStrategy1(price) 
     CalculateReturn(price) 
     PlotReturn(price)
 

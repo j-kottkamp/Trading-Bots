@@ -54,14 +54,14 @@ def SetStrategy1(price, WINDOW_LAGGING, WINDOW_FAST, WINDOW_SLOW):
     # here strategy------->
     price["Long"] = np.where(
         (price.Fast_IM > price.Slow_IM) & 
-        (price.Lagging_Low.shift(-26) > price.Close) & 
-        (price.Close > price.Bearish_Cloud), True, False
+        (price.Lagging_High.shift(-26) > price.Close) & 
+        (price.Close > price.Bullish_Cloud), True, False
     )
     
     price["Short"] = np.where(
         (price.Fast_IM < price.Slow_IM) & 
-        (price.Lagging_High.shift(-26) < price.Close) &
-        (price.Close < price.Bullish_Cloud), True, False
+        (price.Lagging_Low.shift(-26) < price.Close) &
+        (price.Close < price.Bearish_Cloud), True, False
     )
     # <-------- copy from backtesting 
     
