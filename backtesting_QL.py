@@ -5,6 +5,7 @@ import yfinance as yf
 import talib as ta
 import matplotlib.pyplot as plt
 import optuna
+from scipy.ndimage import median_filter
 
 
 # Q-Learning Agent
@@ -13,10 +14,10 @@ class QLearningAgent:
         self.state_size = state_size
         self.action_size = action_size  # Adjust to the number of actions (Buy, Sell, Short, Cover)
         self.q_table = {}  # Use a dictionary for Q-table to handle hashed states
-        self.alpha = 0.01  # Learning rate
-        self.gamma = 0.8  # Discount factor for future rewards
+        self.alpha = 0.5  # Learning rate
+        self.gamma = 0.85  # Discount factor for future rewards
         self.epsilon = 1.0  # Initial exploration rate (reduced over time)
-        self.epsilon_decay = 0.9965  # Decay rate for exploration
+        self.epsilon_decay = 0.99 # Decay rate for exploration
         self.epsilon_min = 0.01  # Minimum value of epsilon
 
     def choose_action(self, state):
@@ -54,9 +55,10 @@ class TradingEnvironment:
         self.shares_held = 0
         self.short_positions = 0
         self.total_profit = 0
-        self.loss_penalty_multiplier = 1.1
         self.investment_percentage = 0.1
-
+        self.previous_total_value = initial_investment
+        self.returns = []
+        self.risk_free_rate = 0.01  # Assuming a small risk-free rate
         self.compute_indicators()
 
     def compute_indicators(self):
@@ -84,6 +86,7 @@ class TradingEnvironment:
         self.shares_held = 0
         self.short_positions = 0
         self.total_profit = 0
+        self.returns = []
         return self.get_state()
 
     def get_state(self):
@@ -108,45 +111,58 @@ class TradingEnvironment:
         return state
 
     def step(self, action):
-        current_price = self.price_data.iloc[self.current_step]
-        price = current_price['Close']
+        current_price = self.price_data.iloc[self.current_step]['Close']
         invest_amount = self.current_balance * self.investment_percentage
+        reward = 0
 
+        # Buy action
         if action == 1:  # Buy
-            num_shares_to_buy = invest_amount // price
+            num_shares_to_buy = invest_amount // current_price
             if num_shares_to_buy > 0:
                 self.shares_held += num_shares_to_buy
-                self.current_balance -= num_shares_to_buy * price
+                self.current_balance -= num_shares_to_buy * current_price
 
+        # Sell action
         elif action == 2:  # Sell
             if self.shares_held > 0:
-                self.current_balance += self.shares_held * price
+                self.current_balance += self.shares_held * current_price
                 self.shares_held = 0
 
+        # Short action
         elif action == 3:  # Short (Sell short)
-            num_shares_to_short = invest_amount // price
+            num_shares_to_short = invest_amount // current_price
             if num_shares_to_short > 0:
                 self.short_positions += num_shares_to_short
-                self.current_balance += num_shares_to_short * price
+                self.current_balance += num_shares_to_short * current_price
 
+        # Cover short action
         elif action == 4:  # Cover (Buy to cover short)
             if self.short_positions > 0:
-                self.current_balance -= self.short_positions * price
+                self.current_balance -= self.short_positions * current_price
                 self.short_positions = 0
 
         self.current_step += 1
+
+        # Calculate portfolio value
+        current_total_value = self.current_balance + self.shares_held * current_price - self.short_positions * current_price
+        profit = current_total_value - self.previous_total_value
+
+        # Track returns
+        if self.previous_total_value > 0:
+            step_return = profit / self.previous_total_value
+            self.returns.append(step_return)
+
+        # Reward as percentage change in portfolio value
+        if self.previous_total_value > 0:
+            reward = ((current_total_value - self.previous_total_value) / self.previous_total_value) * 1000
+
+        # Update total profit and value
+        self.previous_total_value = current_total_value
+        self.total_profit += current_total_value - self.initial_investment
+
+        # End of data?
         done = self.current_step >= len(self.price_data) - 1
 
-        next_price = self.price_data.iloc[self.current_step] if not done else current_price
-        total_value = self.current_balance + self.shares_held * next_price['Close'] - self.short_positions * next_price['Close']
-        profit = total_value - self.initial_investment
-
-        if profit < 0:
-            reward = profit * self.loss_penalty_multiplier
-        else:
-            reward = profit
-
-        self.total_profit = profit
         return self.get_state(), reward, done
 
 
@@ -176,44 +192,63 @@ def reinforcement_learning(price_data, episodes=1000, initial_investment=10000):
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
 
-        print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward/100000:.2f}, Total Profit: {env.total_profit/100:.2f}, Epsilon: {agent.epsilon:.4f}")
+        print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward/10:.2f}, Total Profit: {env.total_profit:.2f}, Epsilon: {agent.epsilon:.4f}")
 
-    # Berechnung der Sharpe Ratio
-    avg_reward = np.mean(episode_rewards)
-    std_reward = np.std(episode_rewards)
-    
-    # Risikofreier Zinssatz auf 0 gesetzt für Vereinfachung
-    risk_free_rate = 2
-    
-    if std_reward != 0:
-        sharpe_ratio = (avg_reward - risk_free_rate) / std_reward
-    else:
-        sharpe_ratio = 0
 
-    print(f"Sharpe Ratio: {sharpe_ratio:.4f}")
+    def moving_average(data, window_size):
+        return np.convolve(data, np.ones(window_size)/window_size, mode='valid')
 
-    # Multipliziere alle Rewards mit der Sharpe Ratio
-    adjusted_rewards = [reward * sharpe_ratio for reward in episode_rewards]
-
+    # Beispiel: Anwenden eines gleitenden Durchschnitts
+    window_size = 20
+    episode_rewards_smoothed = moving_average(np.array(episode_rewards), window_size)
+            
     # Lernkurven plotten: Belohnungen vor und nach Sharpe-Adjustment
-    plt.figure(figsize=(14, 6))
+    def plot_rewards_profits_with_median_filter(episode_rewards, episode_profits, filter_size=5):
+        # Apply the median filter to rewards and profits
+        filtered_rewards = median_filter(episode_rewards, size=filter_size)
+        filtered_profits = median_filter(episode_profits, size=filter_size)
+        
+        # Plot original rewards and filtered rewards on different charts
+        plt.figure(figsize=(14, 10))
 
-    plt.subplot(1, 2, 1)
-    plt.plot(episode_rewards, label='Total Reward')
-    plt.xlabel('Episode')
-    plt.ylabel('Total Reward')
-    plt.title('Learning Curve: Total Reward')
-    plt.legend()
+        # Original Rewards
+        plt.subplot(2, 2, 1)
+        plt.plot(episode_rewards, label='Original Reward')
+        plt.xlabel('Episode')
+        plt.ylabel('Total Reward')
+        plt.title('Original Reward per Episode')
+        plt.legend()
 
-    plt.subplot(1, 2, 2)
-    plt.plot(adjusted_rewards, label='Sharpe Adjusted Reward', color='orange')
-    plt.xlabel('Episode')
-    plt.ylabel('Adjusted Reward')
-    plt.title('Learning Curve: Sharpe Adjusted Reward')
-    plt.legend()
+        # Filtered Rewards
+        plt.subplot(2, 2, 2)
+        plt.plot(filtered_rewards, label='Filtered Reward', color='green')
+        plt.xlabel('Episode')
+        plt.ylabel('Filtered Reward')
+        plt.title('Filtered Reward per Episode (Median Filter)')
+        plt.legend()
 
-    plt.tight_layout()
-    plt.show()
+        # Original Profits
+        plt.subplot(2, 2, 3)
+        plt.plot(episode_profits, label='Original Profit', color='orange')
+        plt.xlabel('Episode')
+        plt.ylabel('Total Profit')
+        plt.title('Original Profit per Episode')
+        plt.legend()
+
+        # Filtered Profits
+        plt.subplot(2, 2, 4)
+        plt.plot(filtered_profits, label='Filtered Profit', color='purple')
+        plt.xlabel('Episode')
+        plt.ylabel('Filtered Profit')
+        plt.title('Filtered Profit per Episode (Median Filter)')
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+
+    # Example call to the function (assuming episode_rewards and episode_profits are defined)
+    plot_rewards_profits_with_median_filter(episode_rewards, episode_profits, filter_size=5)
+    
 
     return agent
 
