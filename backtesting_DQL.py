@@ -56,11 +56,11 @@ class DQNAgent:
         self.state_size = state_size
         self.action_size = action_size
         self.memory = PrioritizedReplayBuffer(size=2000, alpha=0.6)  # Updated buffer size
-        self.gamma = 0.99  # Discount factor
+        self.gamma = 0.9  # Discount factor
         self.epsilon = 1.0  # Exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.99
-        self.learning_rate = 0.05
+        self.epsilon_min = 0.05
+        self.epsilon_decay = 0.9925
+        self.learning_rate = 0.01
         self.batch_size = 64  # Updated batch size
         self.model = self.build_model()
 
@@ -72,13 +72,13 @@ class DQNAgent:
         # Neural Network for Deep Q-Learning
         model = tf.keras.Sequential([
             layers.Input(shape=(self.state_size,)),
-            layers.Dense(64, activation='relu'),
-            layers.Dense(64, activation='relu'),
-            layers.Dense(64, activation='relu'),
+            layers.Dense(128, activation='relu'),
+            layers.Dense(128, activation='relu'),
+            layers.Dense(128, activation='relu'),
+            layers.Dense(128, activation='relu'),
             layers.Dense(self.action_size, activation='linear')
         ])
-        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate),
-                      loss='mse')
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate), loss='mse')
         return model
 
     def choose_action(self, state):
@@ -127,10 +127,13 @@ class TradingEnvironment:
         self.short_positions = 0
         self.previous_total_value = initial_investment
         self.current_position = None
-        self.returns = []  # Initialize returns as an empty list
-        self.loss_penalty_multiplier = 1.0
+        self.returns = []
         self.investment_percentage = 0.1
-        self.total_profit = 0  # Initialize total_profit here
+        self.total_profit = 0
+
+        # Additional variables for rewards
+        self.previous_trade_value = 0
+        self.trade_start_value = 0
 
         self.compute_indicators()
 
@@ -191,48 +194,55 @@ class TradingEnvironment:
         price = current_price['Close']
         invest_amount = self.current_balance * self.investment_percentage
         reward = 0
+        if action == 0:
+            reward == -5
         
         if action == 1:  # Buy
             num_shares_to_buy = invest_amount // price
             if num_shares_to_buy > 0:
                 self.shares_held += num_shares_to_buy
                 self.current_balance -= num_shares_to_buy * price
+                self.trade_start_value = price  # Track entry price
+                reward = 10
                 self.current_position = {
                     'type': 'buy',
                     'price': price,
                     'amount': num_shares_to_buy
                 }
-                
+
         elif action == 2:  # Sell
             if self.shares_held > 0 and self.current_position and self.current_position['type'] == 'buy':
-                # Calculate profit/loss
                 profit = (price - self.current_position['price']) * self.current_position['amount']
-                reward = profit / self.current_position['price'] * 1000
+                self.total_profit += profit
+                reward = self.calculate_reward(profit)
+                
                 self.current_balance += self.shares_held * price
                 self.shares_held = 0
                 self.current_position = None
-                self.total_profit += profit  # Update total_profit
-                
-        elif action == 3:  # Short (Sell short)
+
+        elif action == 3:  # Short
             num_shares_to_short = invest_amount // price
             if num_shares_to_short > 0:
                 self.short_positions += num_shares_to_short
                 self.current_balance += num_shares_to_short * price
+                self.trade_start_value = price  # Track entry price for shorts
+                reward = 10
                 self.current_position = {
                     'type': 'short',
                     'price': price,
                     'amount': num_shares_to_short
                 }
 
-        elif action == 4:  # Cover (Buy to cover short)
+        elif action == 4:  # Cover
             if self.short_positions > 0 and self.current_position and self.current_position['type'] == 'short':
-                # Calculate profit/loss
                 profit = (self.current_position['price'] - price) * self.current_position['amount']
-                reward = profit / self.current_position['price'] * 1000
+                self.total_profit += profit
+                reward = self.calculate_reward(profit)
+                
                 self.current_balance -= self.short_positions * price
                 self.short_positions = 0
                 self.current_position = None
-                self.total_profit += profit  # Update total_profit
+                
 
         self.current_step += 1
         # Calculate portfolio value
@@ -252,20 +262,34 @@ class TradingEnvironment:
 
         return self.get_state(), reward, done
 
+    def calculate_reward(self, profit):
+        if profit > 0:
+            reward = (profit / self.previous_trade_value) * 1000 if self.previous_trade_value != 0 else 0
+            if profit / self.previous_trade_value >= 0.05:
+                reward += 4000  # Bonus for >5% profit
+            elif profit / self.previous_trade_value >= 0.03:
+                reward += 2000  # Bonus for >3% profit
+            elif profit / self.previous_trade_value >= 0.01:
+                reward += 500  # Bonus for >1% profit
+        else:
+            reward = (profit / self.previous_trade_value) * 1200 if self.previous_trade_value != 0 else 0  # Loss penalty
 
+        self.previous_trade_value = abs(profit) if profit != 0 else self.previous_trade_value
+        return reward
 
 
 
 def preprocess_data(price_data):
     # Extract features without labels
-    features = price_data[['Close', 'High', 'Low', 'Volume', 'EMA_9', 'EMA_50', 'RSI']].values
+    features = price_data[['Close', 'High', 'Low', 'Volume', 'EMA_9', 'EMA_50', 'RSI',
+                           'ATR', 'MACD_hist', 'PSAR', 'ADX', 'VAR', 'TSF', 'HT_DCPHASE', 'HT_DCPeriod']].values
     
     # Create the dataset without labels
     dataset = tf.data.Dataset.from_tensor_slices(features)
     return dataset
 
 # Training the DQN Agent
-def dqn_training(price_data, episodes=100, initial_investment=10000):
+def dqn_training(price_data, episodes=500, initial_investment=10000):
     env = TradingEnvironment(price_data, initial_investment)
     state_size = len(env.get_state())
     action_size = 5  # Buy, Sell, Hold, Short, Cover
