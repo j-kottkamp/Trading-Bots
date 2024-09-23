@@ -362,15 +362,18 @@ def plot_metrics(episode_rewards, num_trades, win_rates, sharpe_ratios, avg_perc
     metrics = [
         (episode_rewards, 'Total Reward', 'Episode Rewards Over Time'),
         (num_trades, 'Number of Trades', 'Number of Trades Per Episode'),
-        (win_rates, 'Win Rate', 'Win Rate Per Episode'),
         (sharpe_ratios, 'Sharpe Ratio', 'Sharpe Ratio Per Episode'),
+        (total_profits, 'Total Profit', 'Total Profit Per Episode'),
+        (win_rates, 'Win Rate', 'Win Rate Per Episode'),
         (avg_percent_gains, 'Avg % Gain/Trade', 'Average % Gain Per Trade'),
         (max_drawdowns, 'Max Drawdown', 'Max Drawdown Per Episode'),
-        (total_profits, 'Total Profit', 'Total Profit Per Episode')
+        
+        
+        
     ]
 
     for idx, (data, ylabel, title) in enumerate(metrics):
-        plt.subplot(4, 2, idx + 1)
+        plt.subplot(3, 3, idx + 1)
         plt.plot(data)
         plt.xlabel('Episode')
         plt.ylabel(ylabel)
@@ -379,7 +382,7 @@ def plot_metrics(episode_rewards, num_trades, win_rates, sharpe_ratios, avg_perc
     plt.tight_layout()
     plt.show()
 
-def dqn_training(price_data, episodes=50, initial_investment=10000):
+def dqn_training(price_data, episodes=10, initial_investment=10000):
     """Main function for DQN training over multiple episodes."""
     env = initialize_environment(price_data, initial_investment)
     agent = initialize_agent(env)
