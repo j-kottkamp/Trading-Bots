@@ -10,6 +10,8 @@ from collections import deque
 import time
 import cProfile
 import pstats
+import cupy as cp
+
 
 # DQN Agent
 class PrioritizedReplayBuffer:
@@ -203,8 +205,10 @@ class TradingEnvironment:
                 self.total_profit += profit
                 self.current_balance += self.shares_held * current_price
                 self.shares_held = 0
-                self.current_position = None
+                
                 reward = self.calculate_reward(current_total_value())  # Pass current_total_value to reward calculation
+                print(f"Action: Long\nBuy Price: {self.current_position['price']}\nSell Price: {current_price}\nProfit: {profit}, Reward: {reward}")
+                self.current_position = None
 
         elif action == 3:  # Short
             num_shares_to_short = invest_amount // current_price
@@ -224,8 +228,12 @@ class TradingEnvironment:
                 self.total_profit += profit
                 self.current_balance -= self.short_positions * current_price
                 self.short_positions = 0
-                self.current_position = None
+
                 reward = self.calculate_reward(current_total_value())  # Pass current_total_value to reward calculation
+                print(f"Action: Short\nBuy Price: {self.current_position['price']}\nSell Price: {current_price}\nProfit: {profit}, Reward: {reward}")
+                self.current_position = None
+
+        
 
         # Update step count
         self.current_step += 1
@@ -243,7 +251,7 @@ class TradingEnvironment:
         if profit > 0:
             reward = profit * 1000
         else:
-            reward = -abs(profit) * 1100  # punish losses
+            reward = profit * 1000  # punish losses
         return reward
 
 
