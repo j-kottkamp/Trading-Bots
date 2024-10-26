@@ -10,8 +10,9 @@ from collections import deque
 import time
 import cProfile
 import pstats
-import cupy as cp
 
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+print("Is cuDNN available: ", tf.test.is_built_with_cuda())
 
 # DQN Agent
 class PrioritizedReplayBuffer:
@@ -129,7 +130,8 @@ class TradingEnvironment:
         self.returns = []
         self.investment_percentage = 0.1
         self.total_profit = 0
-        self.previous_trade_value = 0  # Initialize previous_trade_value
+        self.previous_trade_value = 0
+        self.days_in_trade = 0
         self.preprocessed_data = self.compute_indicators()
 
 
@@ -186,8 +188,12 @@ class TradingEnvironment:
         # Actions: Hold, Buy, Sell, Short, Cover
         if action == 0:  # Hold
             reward = -5
+            if self.current_position:  # If in a position, increment days in trade
+                self.days_in_trade += 1
 
         elif action == 1:  # Buy
+            if self.current_position:  # If in a position, increment days in trade
+                self.days_in_trade += 1
             num_shares_to_buy = invest_amount // current_price
             if num_shares_to_buy > 0:
                 self.shares_held += num_shares_to_buy
@@ -198,19 +204,24 @@ class TradingEnvironment:
                     'price': current_price,
                     'amount': num_shares_to_buy
                 }
+                self.days_in_trade = 0
 
         elif action == 2:  # Sell
+            if self.current_position:  # If in a position, increment days in trade
+                self.days_in_trade += 1
             if self.shares_held > 0 and self.current_position and self.current_position['type'] == 'buy':
                 profit = (current_price - self.current_position['price']) * self.current_position['amount']
                 self.total_profit += profit
                 self.current_balance += self.shares_held * current_price
                 self.shares_held = 0
                 
-                reward = self.calculate_reward(current_total_value())  # Pass current_total_value to reward calculation
-                print(f"Action: Long\nBuy Price: {self.current_position['price']}\nSell Price: {current_price}\nProfit: {profit}, Reward: {reward}")
+                reward = self.calculate_reward(profit)  # Pass current_total_value to reward calculation
                 self.current_position = None
+                self.days_in_trade = 0
 
         elif action == 3:  # Short
+            if self.current_position:  # If in a position, increment days in trade
+                self.days_in_trade += 1
             num_shares_to_short = invest_amount // current_price
             if num_shares_to_short > 0:
                 self.short_positions += num_shares_to_short
@@ -221,17 +232,20 @@ class TradingEnvironment:
                     'price': current_price,
                     'amount': num_shares_to_short
                 }
+                self.days_in_trade = 0
 
         elif action == 4:  # Cover
+            if self.current_position:  # If in a position, increment days in trade
+                self.days_in_trade += 1
             if self.short_positions > 0 and self.current_position and self.current_position['type'] == 'short':
                 profit = (self.current_position['price'] - current_price) * self.current_position['amount']
                 self.total_profit += profit
                 self.current_balance -= self.short_positions * current_price
                 self.short_positions = 0
 
-                reward = self.calculate_reward(current_total_value())  # Pass current_total_value to reward calculation
-                print(f"Action: Short\nBuy Price: {self.current_position['price']}\nSell Price: {current_price}\nProfit: {profit}, Reward: {reward}")
+                reward = self.calculate_reward(profit)  # Pass current_total_value to reward calculation
                 self.current_position = None
+                self.days_in_trade = 0
 
         
 
@@ -246,12 +260,11 @@ class TradingEnvironment:
 
         return self.get_state(), reward, done
 
-    def calculate_reward(self, current_total_value):
-        profit = current_total_value - self.previous_total_value
+    def calculate_reward(self, profit):
         if profit > 0:
-            reward = profit * 1000
+            reward = (profit * 1000) / (self.days_in_trade * 0.01)
         else:
-            reward = profit * 1000  # punish losses
+            reward = (profit * 1050)
         return reward
 
 
@@ -419,7 +432,7 @@ def dqn_training(price_data, episodes=10, initial_investment=10000):
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
         
-        print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward:.2f}, Epsilon: {agent.epsilon:.4f}")
+        print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward / 1000}, Epsilon: {agent.epsilon:.4f}")
         print(f"Total Profit: {total_profit:.2f}, Total Value: {env.current_total_value:.2f}")
         print(f"Trades: {trade_count}, Win Rate: {win_rate:.2f}, Sharpe Ratio: {sharpe_ratio:.2f}, Max Drawdown: {max_drawdown:.2f}")
     
