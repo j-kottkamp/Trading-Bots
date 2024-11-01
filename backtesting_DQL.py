@@ -209,7 +209,7 @@ class TradingEnvironment:
                     'price': current_price,
                     'amount': num_shares_to_buy
                 }
-                self.days_in_trade = 0
+            
 
         elif action == 2:  # Sell
             if self.shares_held > 0 and self.current_position and self.current_position['type'] == 'buy':
@@ -217,13 +217,12 @@ class TradingEnvironment:
                 self.total_profit += profit
                 self.current_balance += self.shares_held * current_price
                 self.shares_held = 0
-                
                 reward = self.calculate_reward(profit) 
                 self.total_reward += reward
                 self.current_position = None
-                self.days_in_trade = 0
             else:
                 reward = 0 # punish Sell if not 
+                
 
         elif action == 3:  # Short
             num_shares_to_short = invest_amount // current_price
@@ -235,7 +234,7 @@ class TradingEnvironment:
                     'price': current_price,
                     'amount': num_shares_to_short
                 }
-                self.days_in_trade = 0
+                
 
         elif action == 4:  # Cover
             if self.short_positions > 0 and self.current_position and self.current_position['type'] == 'short':
@@ -243,18 +242,17 @@ class TradingEnvironment:
                 self.total_profit += profit
                 self.current_balance -= self.short_positions * current_price
                 self.short_positions = 0
-
                 reward = self.calculate_reward(profit)
-                
                 self.current_position = None
                 self.days_in_trade = 0
             else:
                 reward = 0 # Punish Cover if not shorting
 
+        self.current_total_value = current_total_value()
         self.total_reward += reward
         self.current_step += 1
         done = self.current_step >= len(self.preprocessed_data) - 1
-        return self.get_state(), reward, done, self.total_reward
+        return self.get_state(), reward, done, self.total_reward, self.total_profit
 
     def calculate_reward(self, profit):
         if profit > 0:
@@ -263,33 +261,6 @@ class TradingEnvironment:
             reward = -abs(profit)
         return reward
 
-
-
-
-def preprocess_data(price_data):
-    close_prices = price_data['Close'].values.flatten()
-    high_prices = price_data['High'].values.flatten()
-    low_prices = price_data['Low'].values.flatten()
-    volume = price_data['Volume'].values.flatten()
-
-    indicators = np.array([
-        close_prices,
-        high_prices,
-        low_prices,
-        volume,
-        ta.EMA(close_prices, timeperiod=9),
-        ta.EMA(close_prices, timeperiod=50),
-        ta.RSI(close_prices, timeperiod=14),
-        ta.ATR(high_prices, low_prices, close_prices, timeperiod=14),
-        ta.MACD(close_prices, fastperiod=12, slowperiod=26, signalperiod=9)[2],
-        ta.SAR(high_prices, low_prices, acceleration=0.02, maximum=0.2),
-        ta.ADX(high_prices, low_prices, close_prices, timeperiod=14),
-        ta.VAR(close_prices, timeperiod=5),
-        ta.TSF(close_prices, timeperiod=14),
-        ta.HT_DCPHASE(close_prices),
-        ta.HT_DCPERIOD(close_prices)
-    ]).T
-    return indicators
 
 def initialize_environment(price_data, initial_investment=10000):
     """Initialize the trading environment."""
@@ -333,8 +304,9 @@ def process_episode(env, agent, initial_investment):
     while not done:
         current_state = env.get_state()
         action = agent.choose_action(current_state)
-        next_state, reward, done, cum_reward = env.step(action)
+        next_state, reward, done, cum_reward, cum_profit = env.step(action)
         agent.remember(current_state, action, reward, next_state, done)
+        total_reward += reward
         state = next_state
 
 
@@ -352,7 +324,7 @@ def process_episode(env, agent, initial_investment):
         peak_value = max(peak_value, current_value)
         max_drawdown = max(max_drawdown, calculate_drawdown(current_value, peak_value))
 
-    return total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown, cum_reward
+    return total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown, cum_reward, cum_profit
 
 def log_metrics(env, initial_investment, trade_count, wins, losses, episode_returns, episode_trade_gains):
     """Log and calculate metrics such as win rate, Sharpe ratio, and profit."""
@@ -411,7 +383,7 @@ def dqn_training(price_data, episodes, initial_investment=10000):
     
     for e in range(episodes):
         ss = f"----------------------- Episode {e+1}/{episodes} -----------------------\n"
-        total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown, cum_reward = process_episode(env, agent, initial_investment)
+        total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown, cum_reward, cum_profit = process_episode(env, agent, initial_investment)
         
         win_rate, sharpe_ratio, avg_percent_gain, total_profit = log_metrics(env, initial_investment, trade_count, wins, losses, episode_returns, episode_trade_gains)
         
@@ -430,7 +402,7 @@ def dqn_training(price_data, episodes, initial_investment=10000):
             agent.epsilon *= agent.epsilon_decay
         
         print(f"{ss}Total Reward: {total_reward:.1f}, Cumulative Reward: {cum_reward}, Epsilon: {agent.epsilon:.4f}")
-        print(f"Total Profit: {total_profit:.2f}")
+        print(f"Total Profit: {total_profit:.2f}, Cumulative Profit: {cum_profit}")
         print(f"Trades: {trade_count}, Win Rate: {win_rate:.2f}, Sharpe Ratio: {sharpe_ratio:.2f}, Max Drawdown: {max_drawdown:.2f}\n")
     
     end_time = time.time()
