@@ -16,40 +16,53 @@ print("Is cuDNN available: ", tf.test.is_built_with_cuda())
 
 # DQN Agent
 class PrioritizedReplayBuffer:
-    def __init__(self, size, alpha):
+    def __init__(self, size, alpha, priority_threshold=1e-5):
         self.size = size
         self.alpha = alpha
-        self.buffer = deque(maxlen=size)
+        self.priority_threshold = priority_threshold
+        self.buffer = []
         self.priorities = np.zeros((size,), dtype=np.float32)
         self.pos = 0
+        self.total_priority_sum = 0  # Running sum of priorities
 
     def add(self, experience, priority):
+        # Check if buffer is full
         if len(self.buffer) < self.size:
             self.buffer.append(experience)
         else:
-            self.buffer[self.pos] = experience
-        self.priorities[self.pos] = priority
+            # Find the index of the lowest priority to replace it
+            min_priority_idx = np.argmin(self.priorities)
+            self.total_priority_sum -= self.priorities[min_priority_idx]  # Adjust running sum
+            self.buffer[min_priority_idx] = experience
+            self.pos = min_priority_idx
+
+        # Add experience and update priority
+        adjusted_priority = max(priority, self.priority_threshold)
+        self.priorities[self.pos] = adjusted_priority ** self.alpha
+        self.total_priority_sum += self.priorities[self.pos]
         self.pos = (self.pos + 1) % self.size
 
     def sample(self, batch_size):
         if len(self.buffer) == 0:
             return [], []
 
-        size = min(len(self.buffer), batch_size)
-        priorities = self.priorities[:len(self.buffer)] + 1e-5  # Small constant to avoid zero priorities
-        probabilities = priorities / np.sum(priorities)
-        
-        
-        if np.isnan(probabilities).any():
-            raise ValueError("Probabilities contain NaN")
-
-        indices = np.random.choice(len(self.buffer), size, p=probabilities[:len(self.buffer)])
+        # Normalize priorities to probabilities
+        probabilities = self.priorities[:len(self.buffer)] / self.total_priority_sum
+        indices = np.random.choice(len(self.buffer), batch_size, p=probabilities)
         samples = [self.buffer[idx] for idx in indices]
+        
         return samples, indices
 
-    def update_priorities(self, indices, priorities):
-        valid_priorities = np.maximum(priorities, 1e-5)  # Avoid zero priorities
-        self.priorities[indices] = valid_priorities ** self.alpha
+    def update_priorities(self, indices, new_priorities):
+        for idx, priority in zip(indices, new_priorities):
+            if priority >= self.priority_threshold:
+                # Only adjust the priorities of sampled experiences
+                old_priority = self.priorities[idx]
+                adjusted_priority = max(priority, self.priority_threshold) ** self.alpha
+                self.priorities[idx] = adjusted_priority
+
+                # Update the running total priority sum
+                self.total_priority_sum += adjusted_priority - old_priority
 
 
 
@@ -62,7 +75,7 @@ class DQNAgent:
         self.gamma = 0.99  # Discount factor
         self.epsilon = 1.0  # Exploration rate
         self.epsilon_min = 0.05
-        self.epsilon_decay = 0.98
+        self.epsilon_decay = 0.97
         self.learning_rate = 0.05
         self.batch_size = 64
         self.model = self.build_model()
@@ -136,10 +149,10 @@ class TradingEnvironment:
 
 
     def compute_indicators(self):
-        close_prices = self.price_data['Close'].values
-        high_prices = self.price_data['High'].values
-        low_prices = self.price_data['Low'].values
-        volume = self.price_data['Volume'].values
+        close_prices = self.price_data['Close'].values.flatten()
+        high_prices = self.price_data['High'].values.flatten()
+        low_prices = self.price_data['Low'].values.flatten()
+        volume = self.price_data['Volume'].values.flatten()
 
         indicators = np.array([
             close_prices,
@@ -187,18 +200,17 @@ class TradingEnvironment:
 
         # Actions: Hold, Buy, Sell, Short, Cover
         if action == 0:  # Hold
-            reward = -5
-            if self.current_position:  # If in a position, increment days in trade
+            reward = 0
+            if self.current_position:
                 self.days_in_trade += 1
 
         elif action == 1:  # Buy
-            if self.current_position:  # If in a position, increment days in trade
+            if self.current_position:  
                 self.days_in_trade += 1
             num_shares_to_buy = invest_amount // current_price
             if num_shares_to_buy > 0:
                 self.shares_held += num_shares_to_buy
                 self.current_balance -= num_shares_to_buy * current_price
-                reward = 10
                 self.current_position = {
                     'type': 'buy',
                     'price': current_price,
@@ -207,7 +219,7 @@ class TradingEnvironment:
                 self.days_in_trade = 0
 
         elif action == 2:  # Sell
-            if self.current_position:  # If in a position, increment days in trade
+            if self.current_position: 
                 self.days_in_trade += 1
             if self.shares_held > 0 and self.current_position and self.current_position['type'] == 'buy':
                 profit = (current_price - self.current_position['price']) * self.current_position['amount']
@@ -215,18 +227,19 @@ class TradingEnvironment:
                 self.current_balance += self.shares_held * current_price
                 self.shares_held = 0
                 
-                reward = self.calculate_reward(profit)  # Pass current_total_value to reward calculation
+                reward = self.calculate_reward(profit)  
                 self.current_position = None
                 self.days_in_trade = 0
+            else:
+                reward = 0 # punish Sell if not 
 
         elif action == 3:  # Short
-            if self.current_position:  # If in a position, increment days in trade
+            if self.current_position: 
                 self.days_in_trade += 1
             num_shares_to_short = invest_amount // current_price
             if num_shares_to_short > 0:
                 self.short_positions += num_shares_to_short
                 self.current_balance += num_shares_to_short * current_price
-                reward = 10
                 self.current_position = {
                     'type': 'short',
                     'price': current_price,
@@ -235,7 +248,7 @@ class TradingEnvironment:
                 self.days_in_trade = 0
 
         elif action == 4:  # Cover
-            if self.current_position:  # If in a position, increment days in trade
+            if self.current_position: 
                 self.days_in_trade += 1
             if self.short_positions > 0 and self.current_position and self.current_position['type'] == 'short':
                 profit = (self.current_position['price'] - current_price) * self.current_position['amount']
@@ -243,9 +256,11 @@ class TradingEnvironment:
                 self.current_balance -= self.short_positions * current_price
                 self.short_positions = 0
 
-                reward = self.calculate_reward(profit)  # Pass current_total_value to reward calculation
+                reward = self.calculate_reward(profit)
                 self.current_position = None
                 self.days_in_trade = 0
+            else:
+                reward = 0 # Punish Cover if not shorting
 
         
 
@@ -262,19 +277,19 @@ class TradingEnvironment:
 
     def calculate_reward(self, profit):
         if profit > 0:
-            reward = (profit * 1000) / (self.days_in_trade * 0.01)
+            reward = (profit)
         else:
-            reward = (profit * 1050)
+            reward = (profit)
         return reward
 
 
 
 
 def preprocess_data(price_data):
-    close_prices = price_data['Close'].values
-    high_prices = price_data['High'].values
-    low_prices = price_data['Low'].values
-    volume = price_data['Volume'].values
+    close_prices = price_data['Close'].values.flatten()
+    high_prices = price_data['High'].values.flatten()
+    low_prices = price_data['Low'].values.flatten()
+    volume = price_data['Volume'].values.flatten()
 
     indicators = np.array([
         close_prices,
@@ -403,7 +418,8 @@ def plot_metrics(episode_rewards, num_trades, win_rates, sharpe_ratios, avg_perc
     plt.tight_layout()
     plt.show()
 
-def dqn_training(price_data, episodes=10, initial_investment=10000):
+def dqn_training(price_data, episodes, initial_investment=10000):
+    
     """Main function for DQN training over multiple episodes."""
     env = initialize_environment(price_data, initial_investment)
     agent = initialize_agent(env)
@@ -414,6 +430,7 @@ def dqn_training(price_data, episodes=10, initial_investment=10000):
     start_time = time.time()
     
     for e in range(episodes):
+        ss = f"----------------------- Episode {e+1}/{episodes} -----------------------\n"
         total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown = process_episode(env, agent, initial_investment)
         
         win_rate, sharpe_ratio, avg_percent_gain, total_profit = log_metrics(env, initial_investment, trade_count, wins, losses, episode_returns, episode_trade_gains)
@@ -432,9 +449,9 @@ def dqn_training(price_data, episodes=10, initial_investment=10000):
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
         
-        print(f"Episode {e+1}/{episodes}, Total Reward: {total_reward / 1000}, Epsilon: {agent.epsilon:.4f}")
-        print(f"Total Profit: {total_profit:.2f}, Total Value: {env.current_total_value:.2f}")
-        print(f"Trades: {trade_count}, Win Rate: {win_rate:.2f}, Sharpe Ratio: {sharpe_ratio:.2f}, Max Drawdown: {max_drawdown:.2f}")
+        print(f"{ss}Total Reward: {total_reward / 1000:.1f}, Epsilon: {agent.epsilon:.4f}")
+        print(f"Total Profit: {total_profit:.2f}")
+        print(f"Trades: {trade_count}, Win Rate: {win_rate:.2f}, Sharpe Ratio: {sharpe_ratio:.2f}, Max Drawdown: {max_drawdown:.2f}\n")
     
     end_time = time.time()
     total_time = end_time - start_time
@@ -451,8 +468,9 @@ def main():
     SYMBOL = "SPY"
     START = datetime.datetime(2021, 1, 1)
     END = datetime.datetime(2025, 1, 1)
+    Training_Length = 50
     price_data = yf.download(SYMBOL, start=START, end=END)
-    dqn_training(price_data)
+    dqn_training(price_data, Training_Length)
 
 # Profile the main function
 cProfile.run('main()', 'profile_output')

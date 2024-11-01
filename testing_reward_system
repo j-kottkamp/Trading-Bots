@@ -1,252 +1,157 @@
 import numpy as np
-import random
-import tensorflow as tf
-from tensorflow.keras import layers
-from collections import deque
-import talib as ta
-import datetime
+import pandas as pd
 import yfinance as yf
+import random
+from collections import deque
+import tensorflow as tf
+from keras import layers, models
 
-# DQN Agent with Prioritized Replay Buffer
-class PrioritizedReplayBuffer:
-    def __init__(self, size, alpha):
-        self.size = size
-        self.alpha = alpha
-        self.buffer = deque(maxlen=size)
-        self.priorities = np.zeros((size,), dtype=np.float32)
-        self.pos = 0
+# Define the trading environment
+class TradingEnvironment:
+    def __init__(self, price_data, initial_investment=10000):
+        self.price_data = price_data
+        self.initial_investment = initial_investment
+        self.reset()
 
-    def add(self, experience, priority):
-        if len(self.buffer) < self.size:
-            self.buffer.append(experience)
-        else:
-            self.buffer[self.pos] = experience
-        self.priorities[self.pos] = priority
-        self.pos = (self.pos + 1) % self.size
+    def reset(self):
+        self.current_step = 0
+        self.balance = self.initial_investment
+        self.shares_owned = 0
+        self.total_value = self.initial_investment
+        self.done = False
+        return self.get_state()
 
-    def sample(self, batch_size):
-        size = min(len(self.buffer), batch_size)
-        priorities = self.priorities[:len(self.buffer)] + 1e-5
-        probabilities = priorities / np.sum(priorities)
-        indices = np.random.choice(len(self.buffer), size, p=probabilities)
-        samples = [self.buffer[idx] for idx in indices]
-        return samples, indices
+    def get_state(self):
+        # Get the current state
+        return np.array([self.price_data['Close'].iloc[self.current_step],
+                         self.balance,
+                         self.shares_owned])
 
-    def update_priorities(self, indices, priorities):
-        self.priorities[indices] = np.maximum(priorities, 1e-5) ** self.alpha
+    def step(self, action):
+        current_price = self.price_data['Close'].iloc[self.current_step]
+        reward = 0
 
+        if action == 0:  # Buy
+            if self.balance >= current_price:  # Check if can buy
+                self.shares_owned += 1
+                self.balance -= current_price
+                reward = 0  # Immediate reward could be zero
 
+        elif action == 1:  # Sell
+            if self.shares_owned > 0:  # Check if can sell
+                self.shares_owned -= 1
+                self.balance += current_price
+                reward = current_price  # Reward based on the current price
+
+        # Update total value
+        self.total_value = self.balance + (self.shares_owned * current_price)
+
+        # Move to the next step
+        self.current_step += 1
+        if self.current_step >= len(self.price_data) - 1:
+            self.done = True
+
+        return self.get_state(), reward, self.done
+
+# DQN Agent
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = PrioritizedReplayBuffer(size=1000, alpha=0.6)
-        self.epsilon = 1.0
-        self.epsilon_min = 0.05
-        self.epsilon_decay = 0.98
-        self.model = self.build_model()
+        self.memory = deque(maxlen=2000)
+        self.gamma = 0.95  # Discount rate
+        self.epsilon = 1.0  # Exploration rate
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.995
+        self.model = self._build_model()
 
-    def build_model(self):
-        model = tf.keras.Sequential([
-            layers.Input(shape=(self.state_size,)),
-            layers.Dense(128, activation='relu'),
-            layers.Dense(128, activation='relu'),
-            layers.Dense(self.action_size, activation='linear')
-        ])
-        model.compile(optimizer='adam', loss='mse')
+    def _build_model(self):
+        model = models.Sequential()
+        model.add(layers.Dense(24, input_dim=self.state_size, activation='relu'))
+        model.add(layers.Dense(24, activation='relu'))
+        model.add(layers.Dense(self.action_size, activation='linear'))
+        # Change lr to learning_rate
+        model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate=0.001))
         return model
 
-    def choose_action(self, state):
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+
+    def replay(self):
+        if len(self.memory) < 32:
+            return
+
+        minibatch = random.sample(self.memory, 32)
+        for state, action, reward, next_state, done in minibatch:
+            target = reward
+            if not done:
+                target += self.gamma * np.max(self.model.predict(next_state.reshape(1, self.state_size), verbose=0))
+            target_f = self.model.predict(state.reshape(1, self.state_size), verbose=0)
+            target_f[0][action] = target
+            self.model.fit(state.reshape(1, self.state_size), target_f, epochs=1, verbose=0)
+
+    def act(self, state):
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
-        state = np.array(state).reshape((1, -1))
-        act_values = self.model.predict(state, verbose=0)
+        act_values = self.model.predict(state.reshape(1, self.state_size), verbose=0)
         return np.argmax(act_values[0])
 
-    def remember(self, state, action, reward, next_state, done):
-        priority = abs(reward)
-        self.memory.add((state, action, reward, next_state, done), priority)
+    def update_epsilon(self):
+        if self.epsilon > self.epsilon_min:
+            self.epsilon *= self.epsilon_decay
 
+# Process a single episode
+def process_episode(env, agent, initial_investment):
+    state = env.reset()
+    total_reward = 0
+    trade_count = 0
+    wins = 0
+    losses = 0
+    episode_returns = []
+    max_drawdown = 0
+    peak_value = initial_investment
 
-class TradingEnvironment:
-    def __init__(self, price_data, initial_investment=10000, verbose=False):
-        self.price_data = price_data
-        self.current_step = 0
-        self.initial_investment = initial_investment
-        self.current_balance = initial_investment
-        self.shares_held = 0
-        self.short_positions = 0
-        self.previous_total_value = initial_investment
-        self.current_position = None
-        self.returns = []
-        self.investment_percentage = 1
-        self.total_profit = 0
-        self.previous_trade_value = 0
-        self.days_in_trade = 0
-        self.preprocessed_data = self.compute_indicators()
-        self.verbose = verbose
+    while True:
+        action = agent.act(state)
+        next_state, reward, done = env.step(action)
 
+        agent.remember(state, action, reward, next_state, done)
 
-    def compute_indicators(self):
-        close_prices = self.price_data['Close'].values
-        high_prices = self.price_data['High'].values
-        low_prices = self.price_data['Low'].values
-        volume = self.price_data['Volume'].values
+        total_reward += reward
+        episode_returns.append(env.total_value)
+        if env.total_value > peak_value:
+            peak_value = env.total_value
+        drawdown = (peak_value - env.total_value) / peak_value
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
 
-        indicators = np.array([
-            close_prices,
-            high_prices,
-            low_prices,
-            volume,
-            ta.EMA(close_prices, timeperiod=9),
-            ta.EMA(close_prices, timeperiod=50),
-            ta.RSI(close_prices, timeperiod=14),
-            ta.ATR(high_prices, low_prices, close_prices, timeperiod=14),
-            ta.MACD(close_prices, fastperiod=12, slowperiod=26, signalperiod=9)[2],  # MACD histogram
-            ta.SAR(high_prices, low_prices, acceleration=0.02, maximum=0.2),
-            ta.ADX(high_prices, low_prices, close_prices, timeperiod=14),
-            ta.VAR(close_prices, timeperiod=5),
-            ta.TSF(close_prices, timeperiod=14),
-            ta.HT_DCPHASE(close_prices),
-            ta.HT_DCPERIOD(close_prices)
-        ]).T
-        return indicators
+        if reward > 0:
+            wins += 1
+        elif reward < 0:
+            losses += 1
 
-    def reset(self):
-        self.current_step = 0
-        self.current_balance = self.initial_investment
-        self.shares_held = 0
-        self.short_positions = 0
-        self.previous_total_value = self.initial_investment
-        self.current_position = None
-        self.total_profit = 0
-        return self.get_state()
+        state = next_state
 
-    def get_state(self):
-        return self.preprocessed_data[self.current_step]
+        if done:
+            break
 
-    def step(self, action):
-        # Current price of the asset
-        current_price = self.preprocessed_data[self.current_step][0]
+    agent.update_epsilon()
+    return total_reward, trade_count, wins, losses, episode_returns, max_drawdown
 
-        # Calculate the amount to invest based on current balance and investment percentage
-        invest_amount = self.current_balance * self.investment_percentage
-        reward = 0
+# Training function
+def train_agent(env, agent, episodes=1000):
+    for episode in range(episodes):
+        total_reward, trade_count, wins, losses, episode_returns, max_drawdown = process_episode(env, agent, env.initial_investment)
         
-        def current_total_value():
-            self.current_total_value = self.current_balance + (self.shares_held * current_price) - (self.short_positions * current_price)
-            return self.current_total_value
+        if episode % 100 == 0:
+            print(f"Episode: {episode}, Total Reward: {total_reward}, Trades: {trade_count}, Wins: {wins}, Losses: {losses}, Max Drawdown: {max_drawdown:.2f}")
 
-        # Actions: Hold, Buy, Sell, Short, Cover
-        if self.verbose:
-            print(f"\n--- Step {self.current_step} ---")
-            print(f"Action: {action}")
-            print(f"Current Price: {current_price}")
-            print(f"Shares Held: {self.shares_held}")
-            
-        if action == 0:  # Hold
-            reward = -5
-            if self.current_position:  # If in a position, increment days in trade
-                self.days_in_trade += 1
+        agent.replay()
 
-        elif action == 1:  # Buy
-            if self.current_position:  # If in a position, increment days in trade
-                self.days_in_trade += 1
-            num_shares_to_buy = invest_amount // current_price
-            print(f"Shares to buy: {num_shares_to_buy}")
-            
-            if num_shares_to_buy > 0:
-                self.shares_held += num_shares_to_buy
-                print(f"Shares held: {self.shares_held}")
-                self.current_balance -= num_shares_to_buy * current_price
-                reward = 10
-                self.current_position = {
-                    'type': 'buy',
-                    'price': current_price,
-                    'amount': num_shares_to_buy
-                }
-                self.days_in_trade = 0
+# Initialize environment and agent
+price_data = yf.download("AAPL", start="2020-01-01", end="2023-01-01")  # Example price data
+env = TradingEnvironment(price_data, initial_investment=10000)
+agent = DQNAgent(state_size=3, action_size=2)  # 3 states (price, balance, shares), 2 actions (buy, sell)
 
-        elif action == 2:  # Sell
-            if self.current_position:  # If in a position, increment days in trade
-                self.days_in_trade += 1
-            if self.shares_held > 0 and self.current_position and self.current_position['type'] == 'buy':
-                profit = (current_price - self.current_position['price']) * self.current_position['amount']
-                print(f"Profit = Current Price({current_price}) - Price when bought({self.current_position["price"]}) * Shares bought({self.current_position["amount"]})\nProfit: {profit}")
-                self.total_profit += profit
-                self.current_balance += self.shares_held * current_price
-                self.shares_held = 0
-                reward = self.calculate_reward(profit)  # Pass current_total_value to reward calculation
-                print(f"Total Value: {current_total_value()}")
-                self.current_position = None
-                self.days_in_trade = 0
-        
-
-        # Update step count
-        self.current_step += 1
-
-        # Store current total value and previous total value
-        self.previous_total_value = current_total_value()
-
-        # Check if the episode is done
-        done = self.current_step >= len(self.preprocessed_data) - 1
-
-        return self.get_state(), reward, done
-
-    def calculate_reward(self, profit):
-        if profit > 0:
-            reward = (profit * 1000) / (self.days_in_trade * 0.01)
-            print(f"Profit: {profit} Days in Trade: {self.days_in_trade}\nReward: {reward / 1000}")
-        else:
-            reward = (profit * 1050)
-            print(f"Profit: {profit} Days in Trade: {self.days_in_trade}\nReward: {reward / 1000}")
-        return reward
-
-def preprocess_data(price_data):
-    close_prices = price_data['Close'].values
-    high_prices = price_data['High'].values
-    low_prices = price_data['Low'].values
-    volume = price_data['Volume'].values
-
-    indicators = np.array([
-        close_prices,
-        high_prices,
-        low_prices,
-        volume,
-        ta.EMA(close_prices, timeperiod=9),
-        ta.EMA(close_prices, timeperiod=50),
-        ta.RSI(close_prices, timeperiod=14),
-        ta.ATR(high_prices, low_prices, close_prices, timeperiod=14),
-        ta.MACD(close_prices, fastperiod=12, slowperiod=26, signalperiod=9)[2],
-        ta.SAR(high_prices, low_prices, acceleration=0.02, maximum=0.2),
-        ta.ADX(high_prices, low_prices, close_prices, timeperiod=14),
-        ta.VAR(close_prices, timeperiod=5),
-        ta.TSF(close_prices, timeperiod=14),
-        ta.HT_DCPHASE(close_prices),
-        ta.HT_DCPERIOD(close_prices)
-    ]).T
-    return indicators
-
-def initialize_environment(price_data, initial_investment=10000, verbose=False):
-    env = TradingEnvironment(price_data, initial_investment, verbose=verbose)
-    env.preprocessed_data = preprocess_data(price_data)
-    return env
-
-
-# Initialize environment and agent for debugging
-SYMBOL = "SPY"
-START = datetime.datetime(2021, 1, 1)
-END = datetime.datetime(2025, 1, 1)
-price_data = yf.download(SYMBOL, start=START, end=END)
-env = initialize_environment(price_data, verbose=True)
-agent = DQNAgent(state_size=env.get_state().shape[0], action_size=3)
-
-# Test single action episode for debugging
-state = env.reset()
-done = False
-
-while not done:
-    action = agent.choose_action(state)
-    next_state, reward, done = env.step(action)
-    agent.remember(state, action, reward, next_state, done)
-    state = next_state
+# Train the agent
+train_agent(env, agent, episodes=1000)
