@@ -138,14 +138,11 @@ class TradingEnvironment:
         self.current_balance = initial_investment
         self.shares_held = 0
         self.short_positions = 0
-        self.previous_total_value = initial_investment
         self.current_position = None
-        self.returns = []
         self.investment_percentage = 0.1
-        self.total_profit = 0
-        self.previous_trade_value = 0
-        self.days_in_trade = 0
         self.preprocessed_data = self.compute_indicators()
+        self.total_profit = 0
+        self.total_reward = 0
 
 
     def compute_indicators(self):
@@ -178,9 +175,9 @@ class TradingEnvironment:
         self.current_balance = self.initial_investment
         self.shares_held = 0
         self.short_positions = 0
-        self.previous_total_value = self.initial_investment
         self.current_position = None
         self.total_profit = 0
+        self.total_reward = 0
         return self.get_state()
 
     def get_state(self):
@@ -201,12 +198,8 @@ class TradingEnvironment:
         # Actions: Hold, Buy, Sell, Short, Cover
         if action == 0:  # Hold
             reward = 0
-            if self.current_position:
-                self.days_in_trade += 1
 
         elif action == 1:  # Buy
-            if self.current_position:  
-                self.days_in_trade += 1
             num_shares_to_buy = invest_amount // current_price
             if num_shares_to_buy > 0:
                 self.shares_held += num_shares_to_buy
@@ -219,23 +212,20 @@ class TradingEnvironment:
                 self.days_in_trade = 0
 
         elif action == 2:  # Sell
-            if self.current_position: 
-                self.days_in_trade += 1
             if self.shares_held > 0 and self.current_position and self.current_position['type'] == 'buy':
                 profit = (current_price - self.current_position['price']) * self.current_position['amount']
                 self.total_profit += profit
                 self.current_balance += self.shares_held * current_price
                 self.shares_held = 0
                 
-                reward = self.calculate_reward(profit)  
+                reward = self.calculate_reward(profit) 
+                self.total_reward += reward
                 self.current_position = None
                 self.days_in_trade = 0
             else:
                 reward = 0 # punish Sell if not 
 
         elif action == 3:  # Short
-            if self.current_position: 
-                self.days_in_trade += 1
             num_shares_to_short = invest_amount // current_price
             if num_shares_to_short > 0:
                 self.short_positions += num_shares_to_short
@@ -248,8 +238,6 @@ class TradingEnvironment:
                 self.days_in_trade = 0
 
         elif action == 4:  # Cover
-            if self.current_position: 
-                self.days_in_trade += 1
             if self.short_positions > 0 and self.current_position and self.current_position['type'] == 'short':
                 profit = (self.current_position['price'] - current_price) * self.current_position['amount']
                 self.total_profit += profit
@@ -257,29 +245,22 @@ class TradingEnvironment:
                 self.short_positions = 0
 
                 reward = self.calculate_reward(profit)
+                
                 self.current_position = None
                 self.days_in_trade = 0
             else:
                 reward = 0 # Punish Cover if not shorting
 
-        
-
-        # Update step count
+        self.total_reward += reward
         self.current_step += 1
-
-        # Store current total value and previous total value
-        self.previous_total_value = current_total_value()
-
-        # Check if the episode is done
         done = self.current_step >= len(self.preprocessed_data) - 1
-
-        return self.get_state(), reward, done
+        return self.get_state(), reward, done, self.total_reward
 
     def calculate_reward(self, profit):
         if profit > 0:
             reward = (profit)
         else:
-            reward = (profit)
+            reward = -abs(profit)
         return reward
 
 
@@ -313,7 +294,6 @@ def preprocess_data(price_data):
 def initialize_environment(price_data, initial_investment=10000):
     """Initialize the trading environment."""
     env = TradingEnvironment(price_data, initial_investment)
-    env.preprocessed_data = preprocess_data(price_data)
     return env
 
 def initialize_agent(env):
@@ -353,10 +333,10 @@ def process_episode(env, agent, initial_investment):
     while not done:
         current_state = env.get_state()
         action = agent.choose_action(current_state)
-        next_state, reward, done = env.step(action)
+        next_state, reward, done, cum_reward = env.step(action)
         agent.remember(current_state, action, reward, next_state, done)
         state = next_state
-        total_reward += reward
+
 
         if action in [1, 2, 3, 4]:
             trade_count += 1
@@ -372,7 +352,7 @@ def process_episode(env, agent, initial_investment):
         peak_value = max(peak_value, current_value)
         max_drawdown = max(max_drawdown, calculate_drawdown(current_value, peak_value))
 
-    return total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown
+    return total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown, cum_reward
 
 def log_metrics(env, initial_investment, trade_count, wins, losses, episode_returns, episode_trade_gains):
     """Log and calculate metrics such as win rate, Sharpe ratio, and profit."""
@@ -431,7 +411,7 @@ def dqn_training(price_data, episodes, initial_investment=10000):
     
     for e in range(episodes):
         ss = f"----------------------- Episode {e+1}/{episodes} -----------------------\n"
-        total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown = process_episode(env, agent, initial_investment)
+        total_reward, trade_count, wins, losses, episode_returns, episode_trade_gains, max_drawdown, cum_reward = process_episode(env, agent, initial_investment)
         
         win_rate, sharpe_ratio, avg_percent_gain, total_profit = log_metrics(env, initial_investment, trade_count, wins, losses, episode_returns, episode_trade_gains)
         
@@ -449,7 +429,7 @@ def dqn_training(price_data, episodes, initial_investment=10000):
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
         
-        print(f"{ss}Total Reward: {total_reward / 1000:.1f}, Epsilon: {agent.epsilon:.4f}")
+        print(f"{ss}Total Reward: {total_reward:.1f}, Cumulative Reward: {cum_reward}, Epsilon: {agent.epsilon:.4f}")
         print(f"Total Profit: {total_profit:.2f}")
         print(f"Trades: {trade_count}, Win Rate: {win_rate:.2f}, Sharpe Ratio: {sharpe_ratio:.2f}, Max Drawdown: {max_drawdown:.2f}\n")
     
@@ -467,8 +447,8 @@ def dqn_training(price_data, episodes, initial_investment=10000):
 def main():
     SYMBOL = "SPY"
     START = datetime.datetime(2021, 1, 1)
-    END = datetime.datetime(2025, 1, 1)
-    Training_Length = 50
+    END = datetime.datetime(2022, 1, 1)
+    Training_Length = 10
     price_data = yf.download(SYMBOL, start=START, end=END)
     dqn_training(price_data, Training_Length)
 
