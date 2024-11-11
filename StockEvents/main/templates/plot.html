@@ -1,0 +1,57 @@
+{% extends 'index.html' %}
+{% load static %}
+
+{% block content %}
+<div id="plotly-graph" style="height: 500px;"></div>
+
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+<script>
+    const data = [{
+        x: [1, 2, 3, 4],
+        y: [10, 15, 13, 17],
+        type: 'scatter',
+        mode: 'lines+markers',
+        marker: { color: '#7c7ee3' }
+    }];
+
+    const layout = {
+        title: {
+            text: 'My Plotly Graph',
+            font: { size: 20, color: 'white', family: 'League Spartan' },
+            xref: 'paper', yref: 'paper', x: 0.5, y: 0.95, showarrow: false
+        },
+        plot_bgcolor: 'rgb(13, 13, 14)',
+        paper_bgcolor: 'rgb(13, 13, 14)',
+        font: { color: 'white', family: 'League Spartan', size: 14 },
+        xaxis: {
+            showgrid: false,
+            zeroline: false,
+            showline: false,
+            tickmode: 'linear',
+            ticks: 'outside',
+            tickcolor: 'rgba(255, 255, 255, 0.5)',
+        },
+        yaxis: {
+            showgrid: false,
+            zeroline: false,
+            showline: false,
+            tickmode: 'linear',
+            ticks: 'outside',
+            tickcolor: 'rgba(255, 255, 255, 0.5)',
+        },
+        hovermode: 'closest',
+        hoverlabel: {
+            bgcolor: 'rgba(0, 0, 0, 0.8)',
+            font_size: 12,
+            font_family: 'League Spartan',
+            font_color: 'white'
+        },
+        showlegend: false,  // Hide legend for cleaner look
+    };
+
+    document.addEventListener("DOMContentLoaded", function() {
+        Plotly.newPlot('plotly-graph', data, layout, { displayModeBar: false });
+    });
+</script>
+{% endblock %}

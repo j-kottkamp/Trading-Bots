@@ -1,0 +1,64 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <title>Hello World</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+
+    <div class="heading">
+        <header>
+            <h2>Eventify</h2>
+        </header>
+    </div>
+    
+    <div class="container">
+      <div class="card">
+        <div class="menu">
+          <h3>Menu<i class="fas fa-angle-down iconM"></i></h3>
+        </div>
+        <div class="body">
+          <ul>
+            <a href="http://127.0.0.1:8000/">
+              <li><i class="fas fa-home icon"></i> Home</li>
+            </a>
+            <a href="http://127.0.0.1:8000/graph/">
+              <li><i class="fas fa-chart-pie icon"></i> Charts</li>
+            </a>
+            <a href="#">
+              <li><i class="fas fa-boxes icon"></i> Widgets</li>
+            </a>
+            <a href="#">
+              <li><i class="fas fa-table icon"></i> Tables</li>
+            </a>
+            <a href="#">
+              <li><i class="fab fa-wpforms icon"></i> Forms</li>
+            </a>
+            <a href="#">
+              <li><i class="fas fa-underline icon"></i> Tipographie</li>
+            </a>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div>
+        <button class="button">Button</button>
+    </div>
+
+    <div class='content'>
+      <!-- Content Block -->
+      {% block content %}
+      {% endblock %}
+    </div>
+    
+    <script src="{% static 'script.js' %}"></script>
+</body>
+</html>
