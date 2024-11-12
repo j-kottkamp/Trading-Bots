@@ -53,7 +53,7 @@
                     .datum(dates.map((d, i) => ({date: d, close: closePrices[i]})))
                     .attr("fill", "none")
                     .attr("stroke", "#7c7ee3")
-                    .attr("stroke-width", 2)
+                    .attr("stroke-width", 3.5)
                     .attr("d", line);
 
                 // Animate the line
@@ -72,6 +72,10 @@
 {% endblock %}
 {% block inputBars %}
     <div class="textInputWrapper">
-        <input placeholder="Search for Ticker" type="text" class="textInput">
+        <form method="POST" action="{% url 'fetch_data' %}">
+            {% csrf_token %}
+            <input id="ticker" name="ticker" placeholder="Search for Ticker" type="text" class="textInput" required>
+            <button type="submit" style="display: none;"></button>
+        </form>
     </div>
 {% endblock %}
