@@ -21,6 +21,7 @@ from main import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('base/', views.index, name='base'),
-    path('graph/', views.plot_graph, name='graph'),
-    path('', views.home, name='home')
+    path('graph/', views.data_page, name='graph'),
+    path('', views.home, name='home'),
+    path('get-historical-data/', views.get_historical_data, name='get_historical_data'),
 ]

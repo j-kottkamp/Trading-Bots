@@ -8,7 +8,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <link rel="stylesheet" href="{% static 'style.css' %}">
+    <link rel="stylesheet" href="{% static 'global.css' %}">
+    <link rel="stylesheet" href="{% static 'navBar.css' %}">
+    <link rel="stylesheet" href="{% static 'plotGraph.css' %}">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
@@ -22,7 +24,7 @@
     <div class="container">
       <div class="card">
         <div class="menu">
-          <h3>Menu<i class="fas fa-angle-down iconM"></i></h3>
+          <h3>Menu<i class="fas fa-angle-right iconM"></i></h3>
         </div>
         <div class="body">
           <ul>
@@ -53,12 +55,18 @@
         <button class="button">Button</button>
     </div>
 
-    <div class='content'>
-      <!-- Content Block -->
-      {% block content %}
-      {% endblock %}
+    <div class="contentContainer">
+      <div class='contentOutline'>
+        <div class="content">
+          {% block content %}
+          {% endblock %}
+        </div>
+      </div>
     </div>
-    
+    <div class="inputBars">
+      {% block inputBars %}
+      {% endblock %}
+    </div>  
     <script src="{% static 'script.js' %}"></script>
 </body>
 </html>

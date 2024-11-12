@@ -1,57 +1,77 @@
 {% extends 'index.html' %}
 {% load static %}
 
-{% block content %}
-<div id="plotly-graph" style="height: 500px;"></div>
 
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+{% block content %}
+<div id="d3-chart" style="width: 600px; height: 400px;"></div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+
 
 <script>
-    const data = [{
-        x: [1, 2, 3, 4],
-        y: [10, 15, 13, 17],
-        type: 'scatter',
-        mode: 'lines+markers',
-        marker: { color: '#7c7ee3' }
-    }];
-
-    const layout = {
-        title: {
-            text: 'My Plotly Graph',
-            font: { size: 20, color: 'white', family: 'League Spartan' },
-            xref: 'paper', yref: 'paper', x: 0.5, y: 0.95, showarrow: false
-        },
-        plot_bgcolor: 'rgb(13, 13, 14)',
-        paper_bgcolor: 'rgb(13, 13, 14)',
-        font: { color: 'white', family: 'League Spartan', size: 14 },
-        xaxis: {
-            showgrid: false,
-            zeroline: false,
-            showline: false,
-            tickmode: 'linear',
-            ticks: 'outside',
-            tickcolor: 'rgba(255, 255, 255, 0.5)',
-        },
-        yaxis: {
-            showgrid: false,
-            zeroline: false,
-            showline: false,
-            tickmode: 'linear',
-            ticks: 'outside',
-            tickcolor: 'rgba(255, 255, 255, 0.5)',
-        },
-        hovermode: 'closest',
-        hoverlabel: {
-            bgcolor: 'rgba(0, 0, 0, 0.8)',
-            font_size: 12,
-            font_family: 'League Spartan',
-            font_color: 'white'
-        },
-        showlegend: false,  // Hide legend for cleaner look
-    };
-
     document.addEventListener("DOMContentLoaded", function() {
-        Plotly.newPlot('plotly-graph', data, layout, { displayModeBar: false });
+        // Fetch data via AJAX
+        fetch("{% url 'get_historical_data' %}")
+            .then(response => response.json())
+            .then(data => {
+                const dates = data.dates.map(date => new Date(date));  // Convert string dates to JavaScript Date objects
+                const closePrices = data.close_prices;
+
+                // Define the chart dimensions and margins
+                const margin = {top: 20, right: 30, bottom: 30, left: 40},
+                      width = 600 - margin.left - margin.right,
+                      height = 400 - margin.top - margin.bottom;
+
+                // Create SVG container inside #d3-chart div
+                const svg = d3.select("#d3-chart")
+                    .append("svg")
+                    .attr("width", width + margin.left + margin.right)
+                    .attr("height", height + margin.top + margin.bottom)
+                    .append("g")
+                    .attr("transform", `translate(${margin.left},${margin.top})`);
+
+                // Define scales
+                const x = d3.scaleTime()
+                    .domain(d3.extent(dates))
+                    .range([0, width]);
+
+                const y = d3.scaleLinear()
+                    .domain([d3.min(closePrices), d3.max(closePrices)])
+                    .nice()
+                    .range([height, 0]);
+
+                // Define the line generator
+                const line = d3.line()
+                    .x(d => x(d.date))
+                    .y(d => y(d.close))
+                    .curve(d3.curveMonotoneX); // Smooth curve
+
+                // Append the line path with animation
+                const path = svg.append("path")
+                    .datum(dates.map((d, i) => ({date: d, close: closePrices[i]})))
+                    .attr("fill", "none")
+                    .attr("stroke", "#7c7ee3")
+                    .attr("stroke-width", 2)
+                    .attr("d", line);
+
+                // Animate the line
+                const totalLength = path.node().getTotalLength();
+                path
+                    .attr("stroke-dasharray", `${totalLength} ${totalLength}`)
+                    .attr("stroke-dashoffset", totalLength)
+                    .transition()
+                    .duration(2000) // Duration of the animation
+                    .ease(d3.easeCubic)
+                    .attr("stroke-dashoffset", 0);
+            })
+            .catch(error => console.error('Error fetching data:', error));
     });
 </script>
+{% endblock %}
+{% block inputBars %}
+    <div class="textInputWrapper">
+        <input placeholder="Search for Ticker" type="text" class="textInput">
+    </div>
 {% endblock %}
