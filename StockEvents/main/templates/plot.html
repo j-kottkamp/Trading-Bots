@@ -1,81 +1,111 @@
 {% extends 'index.html' %}
 {% load static %}
 
-
-
+{%block inputBars%}
+<div class="textInputWrapper">
+    <form id="ticker-form" method="POST" action="{% url 'fetch_data' %}">
+        {% csrf_token %}
+        <input id="ticker" name="ticker" placeholder="Search for Ticker" type="text" class="textInput" required>
+        <button type="submit" class="tickerButton">Search</button>
+    </form>
+</div>
+{%endblock%}
 {% block content %}
 <div id="d3-chart" style="width: 600px; height: 400px;"></div>
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 
-
-
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // Fetch data via AJAX
-        fetch("{% url 'get_historical_data' %}")
-            .then(response => response.json())
-            .then(data => {
-                const dates = data.dates.map(date => new Date(date));  // Convert string dates to JavaScript Date objects
-                const closePrices = data.close_prices;
+        // Function to fetch data and update chart
+        function fetchAndDisplayData(ticker = '') {
+            let url = "{% url 'get_historical_data' %}";
+            if (ticker) {
+                url += `?ticker=${ticker}`;  // Append ticker query if provided
+            }
 
-                // Define the chart dimensions and margins
-                const margin = {top: 20, right: 30, bottom: 30, left: 40},
-                      width = 600 - margin.left - margin.right,
-                      height = 400 - margin.top - margin.bottom;
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const dates = data.dates.map(date => new Date(date));
+                    const closePrices = data.close_prices;
+                    const tickerSymbol = data.ticker;  // Display ticker symbol
 
-                // Create SVG container inside #d3-chart div
-                const svg = d3.select("#d3-chart")
-                    .append("svg")
-                    .attr("width", width + margin.left + margin.right)
-                    .attr("height", height + margin.top + margin.bottom)
-                    .append("g")
-                    .attr("transform", `translate(${margin.left},${margin.top})`);
+                    // Clear existing chart before re-drawing
+                    d3.select("#d3-chart").selectAll("*").remove();
 
-                // Define scales
-                const x = d3.scaleTime()
-                    .domain(d3.extent(dates))
-                    .range([0, width]);
+                    // Define the chart dimensions and margins
+                    const margin = { top: 20, right: 30, bottom: 30, left: 40 },
+                          width = 600 - margin.left - margin.right,
+                          height = 400 - margin.top - margin.bottom;
 
-                const y = d3.scaleLinear()
-                    .domain([d3.min(closePrices), d3.max(closePrices)])
-                    .nice()
-                    .range([height, 0]);
+                    // Create SVG container inside #d3-chart div
+                    const svg = d3.select("#d3-chart")
+                        .append("svg")
+                        .attr("width", width + margin.left + margin.right)
+                        .attr("height", height + margin.top + margin.bottom)
+                        .append("g")
+                        .attr("transform", `translate(${margin.left},${margin.top})`);
 
-                // Define the line generator
-                const line = d3.line()
-                    .x(d => x(d.date))
-                    .y(d => y(d.close))
-                    .curve(d3.curveMonotoneX); // Smooth curve
+                    // Define scales
+                    const x = d3.scaleTime().domain(d3.extent(dates)).range([0, width]);
+                    const y = d3.scaleLinear().domain([d3.min(closePrices), d3.max(closePrices)]).nice().range([height, 0]);
 
-                // Append the line path with animation
-                const path = svg.append("path")
-                    .datum(dates.map((d, i) => ({date: d, close: closePrices[i]})))
-                    .attr("fill", "none")
-                    .attr("stroke", "#7c7ee3")
-                    .attr("stroke-width", 3.5)
-                    .attr("d", line);
+                    // Define the line generator
+                    const line = d3.line()
+                        .x(d => x(d.date))
+                        .y(d => y(d.close))
+                        .curve(d3.curveMonotoneX);
 
-                // Animate the line
-                const totalLength = path.node().getTotalLength();
-                path
-                    .attr("stroke-dasharray", `${totalLength} ${totalLength}`)
-                    .attr("stroke-dashoffset", totalLength)
-                    .transition()
-                    .duration(2000) // Duration of the animation
-                    .ease(d3.easeCubic)
-                    .attr("stroke-dashoffset", 0);
-            })
-            .catch(error => console.error('Error fetching data:', error));
+                    // Append the line path with animation
+                    const path = svg.append("path")
+                        .datum(dates.map((d, i) => ({ date: d, close: closePrices[i] })))
+                        .attr("fill", "none")
+                        .attr("stroke", "#7c7ee3")
+                        .attr("stroke-width", 3.5)
+                        .attr("d", line);
+
+                    // Animate the line
+                    const totalLength = path.node().getTotalLength();
+                    path.attr("stroke-dasharray", `${totalLength} ${totalLength}`)
+                        .attr("stroke-dashoffset", totalLength)
+                        .transition()
+                        .duration(2000)
+                        .ease(d3.easeCubic)
+                        .attr("stroke-dashoffset", 0);
+
+                    // Display the ticker symbol
+                    d3.select("#d3-chart").append("text")
+                        .attr("x", width / 2)
+                        .attr("y", -10)
+                        .attr("text-anchor", "middle")
+                        .attr("fill", "#333")
+                        .style("font-size", "16px")
+                        .text(`Ticker: ${tickerSymbol}`);
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        // Fetch random ticker on page load
+        fetchAndDisplayData();
+
+        // Handle form submission for a new ticker
+        const form = document.getElementById("ticker-form");
+        const input = document.getElementById("ticker");
+
+        form.addEventListener("submit", function(event) {
+            event.preventDefault();
+            fetchAndDisplayData(input.value);  // Fetch and update chart with new ticker
+        });
+
+        // Trigger form submission when pressing Enter inside the input field
+        input.addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();  // Prevent default form submission
+                form.requestSubmit();  // Trigger submit event programmatically
+            }
+        });
     });
 </script>
 {% endblock %}
-{% block inputBars %}
-    <div class="textInputWrapper">
-        <form method="POST" action="{% url 'fetch_data' %}">
-            {% csrf_token %}
-            <input id="ticker" name="ticker" placeholder="Search for Ticker" type="text" class="textInput" required>
-            <button type="submit" style="display: none;"></button>
-        </form>
-    </div>
-{% endblock %}
+

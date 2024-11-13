@@ -40,3 +40,5 @@ document.getElementById('ticker').addEventListener('keypress', function(event) {
         .catch(error => console.error('Error:', error));
     }
 });
+
+

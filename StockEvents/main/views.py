@@ -9,10 +9,14 @@ def index(request):
     return render(request, 'index.html')
 
 def get_opening_data(request):
-    ticker = random.choice(openings)
-    stock_data = yf.download(ticker, start="2023-1-01", end="2024-01-01")
+    ticker = request.GET.get('ticker')
+    if not ticker:
+        ticker = random.choice(openings)
+    
+    stock_data = yf.download(ticker, start="2023-01-01", end="2024-01-01")
     
     data = {
+        'ticker': ticker,
         'dates': stock_data.index.strftime('%Y-%m-%d').tolist(),
         'close_prices': stock_data['Close'].values.tolist()
     }

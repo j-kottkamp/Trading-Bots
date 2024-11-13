@@ -24,5 +24,5 @@ urlpatterns = [
     path('', views.home, name='home'),
     path('graph/', views.data_page, name='graph'),
     path('fetch_data/', views.fetch_data, name='fetch_data'),
-    path('get-historical-data/', views.get_opening_data, name='get_historical_data'),
+    path('get_historical_data/', views.get_opening_data, name='get_historical_data'),
 ]

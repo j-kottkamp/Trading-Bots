@@ -21,6 +21,10 @@
     z-index: 10;
 }
 
+.tickerButton {
+  display: none;
+}
+
 .textInputWrapper {
     position: absolute;
     top: 35%;
