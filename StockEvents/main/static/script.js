@@ -3,17 +3,6 @@ window.onload = function() {
 };
 
 
-// Select the div with the class 'content'
-const contentDiv = document.querySelector('.content');
-const contentOutline = document.querySelector('.contentOutline');
-
-// Check if the div is empty
-if (!contentDiv.innerHTML.trim()) {
-    // If empty, hide the div
-    contentOutline.style.display = 'none';
-}
-
-
 document.getElementById('ticker').addEventListener('keypress', function(event) {
     if (event.key === 'Enter') {
         event.preventDefault(); // Prevent the form's default submission
@@ -42,3 +31,40 @@ document.getElementById('ticker').addEventListener('keypress', function(event) {
 });
 
 
+document.addEventListener("DOMContentLoaded", function() {
+    function fetchAndDisplayMetrics(ticker = '') {
+        const metricsUrlBase = document.getElementById("data-container").dataset.metricsUrl;
+        let metricsUrl = ticker ? `${metricsUrlBase}?ticker=${ticker}` : metricsUrlBase;
+
+        fetch(metricsUrl)
+            .then(response => response.json())
+            .then(metrics => {
+                document.getElementById("ticker").textContent = metrics.ticker;
+                document.getElementById("average_return").textContent = metrics.average_return.toFixed(2);
+                document.getElementById("total_return").textContent = metrics.total_return.toFixed(2);
+                document.getElementById("volatility").textContent = metrics.volatility.toFixed(2);
+                document.getElementById("max_drawdown").textContent = metrics.max_drawdown.toFixed(2);
+                document.getElementById("CAGR").textContent = metrics.CAGR.toFixed(2);
+                document.getElementById("sharpe_ratio").textContent = metrics.sharpe_ratio.toFixed(2);
+                document.getElementById("calmar_ratio").textContent = metrics.calmar_ratio.toFixed(2);
+            })
+            .catch(error => console.error('Error fetching metrics:', error));
+    }
+
+    const form = document.getElementById("ticker-form");
+    const input = document.getElementById("ticker");
+
+    if (form && input) {
+        form.addEventListener("submit", function(event) {
+            event.preventDefault();
+            fetchAndDisplayMetrics(input.value);
+        });
+
+        input.addEventListener("keydown", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                form.dispatchEvent(new Event('submit'));
+            }
+        });
+    }
+});

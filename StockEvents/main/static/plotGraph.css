@@ -1,121 +1,96 @@
-.contentContainer {
-    position: absolute;
-    top: 35%;
-    left: 65%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.contentOutline {
-    outline: 5px solid #808080;
-    border-radius: 14px;
-    padding: 0;
-    margin: 0;
-    z-index: 20;
-}
+@import url('https://fonts.googleapis.com/css?family=Roboto');
 
 .content {
-    position: relative;
-    z-index: 10;
+  z-index: 100;
+  position: absolute;
+  top: 10%;
+  left: 0;
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-wrap: wrap; 
+  flex-direction: row; 
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: clamp(5px, 5vw, 50px);
+  padding: 10px;
+  box-sizing: border-box;
 }
 
-.tickerButton {
-  display: none;
+.graphOutline {
+  border: 1px #808080;
+  border-radius: 8px;
 }
 
-.textInputWrapper {
-    position: absolute;
-    top: 35%;
-    left: 30%;
-    width: 180px;
-    margin: 12px 5px;
-    --accent-color: #7c7ee3;
-  }
+.graph {
+  flex: 0 0 calc(33.33% - clamp(5px, 5vw, 50px));
+  max-width: calc(33.33% - clamp(5px, 5vw, 50px)); 
+  box-sizing: border-box; 
+  transition: all 0.5s ease; 
+}
+
+.metricsContainer {
+  flex: 0 0 calc(33.33% - clamp(5px, 5vw, 50px));
+  max-width: calc(33.33% - clamp(5px, 5vw, 50px)); 
+  box-sizing: border-box; 
+  transition: all 0.5s ease; 
+}
+
+.textInputContainer {
+  max-width: calc(33.33% - clamp(5px, 5vw, 50px)); 
+  box-sizing: border-box; 
+  padding: 0px;
+  transition: all 0.5s ease; 
+}
+
+.metrics > div {
+  background-color: #35353500;
+  padding: 15px;
+  border-radius: 10px;
+  margin: 5px 0;
   
-  .textInputWrapper:before {
-    transition: border-bottom-color 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.42);
+}
+
+.metrics {
+  top: 17%;
+  display: flex;
+  align-items: flex-start;
+  transition: all 0.3s ease;
+  font-size: 30px;
+  position: relative;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  font-size: 28px;
+  z-index: 5;
+  border-radius: 20px;
+
+  font-family: "Roboto";
+  background-image: linear-gradient(45deg, #2f2c72, #7c7ee3);
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.metricsContainer {
+  list-style-type: none;
+  padding: 0%;
+  margin: 0%;
+}
+
+/* Adjust layout for small screens */
+@media (max-width: 800px) {
+  .content {
+    gap: 20px; /* Fixed smaller gap for stacked layout */
+    justify-content: center; /* Center items when stacked */
   }
-  
-  .textInputWrapper:before,
-  .textInputWrapper:after {
-    content: "";
-    left: 0;
-    right: 0;
-    position: absolute;
-    pointer-events: none;
-    bottom: -1px;
-    z-index: 4;
-    width: 100%;
+  .graph,
+  .metricsContainer {
+    flex: 0 0 100%; /* Full width when stacked */
+    max-width: 100%;
+    margin-bottom: 20px; /* Add space between stacked elements */
   }
-  
-  .textInputWrapper:focus-within:before {
-    border-bottom: 1px solid var(--accent-color);
+  .textInputContainer {
+    margin-bottom: 20px;
   }
-  
-  .textInputWrapper:before {
-    transition: border-bottom-color 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.42);
-  }
-  
-  .textInputWrapper:focus-within:before {
-    border-bottom: 1px solid var(--accent-color);
-    transform: scaleX(1);
-  }
-  
-  .textInputWrapper:focus-within:after {
-    border-bottom: 2px solid var(--accent-color);
-    transform: scaleX(1);
-  }
-  
-  .textInputWrapper:after {
-    content: "";
-    transform: scaleX(0);
-    transition: transform 250ms cubic-bezier(0, 0, 0.2, 1) 0ms;
-    will-change: transform;
-    border-bottom: 2px solid var(--accent-color);
-    border-bottom-color: var(--accent-color);
-  }
-  
-  .textInput::placeholder {
-    transition: opacity 250ms cubic-bezier(0, 0, 0.2, 1) 0ms;
-    opacity: 1;
-    user-select: none;
-    color: rgba(255, 255, 255, 0.582);
-  }
-  
-  .textInputWrapper .textInput {
-    border-radius: 5px 5px 0px 0px;
-    box-shadow: 0px 2px 5px rgb(35 35 35 / 30%);
-    max-height: 36px;
-    background-color: #252525;
-    transition-timing-function: cubic-bezier(0.25, 0.8, 0.25, 1);
-    transition-duration: 200ms;
-    transition-property: background-color;
-    color: #e8e8e8;
-    font-size: 14px;
-    font-weight: 500;
-    padding: 12px;
-    width: 100%;
-    border-left: none;
-    border-bottom: none;
-    border-right: none;
-  }
-  
-  .textInputWrapper .textInput:focus,
-  .textInputWrapper .textInput:active {
-    outline: none;
-  }
-  
-  .textInputWrapper:focus-within .textInput,
-  .textInputWrapper .textInput:focus,
-  .textInputWrapper .textInput:active {
-    background-color: #353535;
-  }
-  
-  .textInputWrapper:focus-within .textInput::placeholder {
-    opacity: 0;
-  }
-  
+}

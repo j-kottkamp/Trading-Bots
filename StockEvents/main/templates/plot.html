@@ -1,27 +1,33 @@
 {% extends 'index.html' %}
 {% load static %}
 
-{%block inputBars%}
-<div class="textInputWrapper">
-    <form id="ticker-form" method="POST" action="{% url 'fetch_data' %}">
-        {% csrf_token %}
-        <input id="ticker" name="ticker" placeholder="Search for Ticker" type="text" class="textInput" required>
-        <button type="submit" class="tickerButton">Search</button>
-    </form>
-</div>
-{%endblock%}
 {% block content %}
-<div id="d3-chart" style="width: 600px; height: 400px;"></div>
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 
+
+<div id="data-container" data-metrics-url="{% url 'get_metrics' %}"></div>
+
+<div class="textInputContainer"
+    <form id="ticker-form" method="POST" action="{% url 'get_historical_data' %}">
+        {% csrf_token %}
+        <input id="ticker" name="ticker" placeholder="Search for Ticker" type="text" class="tickerInput" oninput="this.value = this.value.toUpperCase()" required>
+        <button type="submit" class="tickerButton"></button>
+    </form>
+</div> 
+
+<div class="graphOutline">
+    <div class="graph" id="d3-chart" style="width: 700px; height: 450px;">
+    </div>
+</div>
+
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
+    document.addEventListener("DOMContentLoaded", function () {
         // Function to fetch data and update chart
         function fetchAndDisplayData(ticker = '') {
             let url = "{% url 'get_historical_data' %}";
             if (ticker) {
-                url += `?ticker=${ticker}`;  // Append ticker query if provided
+                url += `?ticker=${ticker}`; // Append ticker query if provided
             }
 
             fetch(url)
@@ -29,15 +35,15 @@
                 .then(data => {
                     const dates = data.dates.map(date => new Date(date));
                     const closePrices = data.close_prices;
-                    const tickerSymbol = data.ticker;  // Display ticker symbol
+                    const tickerSymbol = data.ticker; // Display ticker symbol
 
                     // Clear existing chart before re-drawing
                     d3.select("#d3-chart").selectAll("*").remove();
 
                     // Define the chart dimensions and margins
                     const margin = { top: 20, right: 30, bottom: 30, left: 40 },
-                          width = 600 - margin.left - margin.right,
-                          height = 400 - margin.top - margin.bottom;
+                        width = 600 - margin.left - margin.right,
+                        height = 400 - margin.top - margin.bottom;
 
                     // Create SVG container inside #d3-chart div
                     const svg = d3.select("#d3-chart")
@@ -93,19 +99,40 @@
         const form = document.getElementById("ticker-form");
         const input = document.getElementById("ticker");
 
-        form.addEventListener("submit", function(event) {
-            event.preventDefault();
-            fetchAndDisplayData(input.value);  // Fetch and update chart with new ticker
-        });
+        if (form && input) {
+            form.addEventListener("submit", function (event) {
+                event.preventDefault();
+                fetchAndDisplayData(input.value); // Fetch and update chart with new ticker
+            });
 
-        // Trigger form submission when pressing Enter inside the input field
-        input.addEventListener("keydown", function(event) {
-            if (event.key === "Enter") {
-                event.preventDefault();  // Prevent default form submission
-                form.requestSubmit();  // Trigger submit event programmatically
-            }
-        });
+            // Trigger form submission when pressing Enter inside the input field
+            input.addEventListener("keydown", function (event) {
+                if (event.key === "Enter") {
+                    event.preventDefault(); // Prevent default form submission
+                    form.dispatchEvent(new Event('submit')); // Trigger the submit event manually
+                }
+            });
+        }
     });
 </script>
+
+
+
+<div id="metricsContainer">
+    <h3>Metrics for <span id="ticker"></span></h3>
+    <ul class="metrics">
+        <li>Drawdown: <span id="average_return"></span></li>
+        <li>Max Price: <span id="total_return"></span></li>
+        <li>Min Price: <span id="volatility"></span></li>
+        <li>Volatility: <span id="max_drawdown"></span></li>
+        <li>Sharpe Ratio: <span id="CAGR"></span></li>
+        <li>Volatility: <span id="sharpe_ratio"></span></li>
+        <li>Calmar Ratio: <span id="calmar_ratio"></span></li>
+    </ul>
+</div>
+
 {% endblock %}
+
+
+    
 

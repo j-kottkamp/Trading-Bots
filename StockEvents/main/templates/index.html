@@ -3,7 +3,7 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <title>Hello World</title>
+    <title>Eventify</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="{% static 'global.css' %}">
     <link rel="stylesheet" href="{% static 'navBar.css' %}">
     <link rel="stylesheet" href="{% static 'plotGraph.css' %}">
+    <link rel="stylesheet" href="{% static 'textInput.css' %}">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body>
@@ -54,19 +55,13 @@
     <div>
         <button class="button">Button</button>
     </div>
-
-    <div class="contentContainer">
-      <div class='contentOutline'>
-        <div class="content">
+    
+      
+      <div class="content">
           {% block content %}
           {% endblock %}
-        </div>
       </div>
-    </div>
-    <div class="inputBars">
-      {% block inputBars %}
-      {% endblock %}
-    </div>  
-    <script src="{% static 'script.js' %}"></script>
+
+      <script src="{% static 'script.js' %}"></script>
 </body>
 </html>
