@@ -71,13 +71,13 @@ class DQNAgent:
     def __init__(self, state_size, action_size, env):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = PrioritizedReplayBuffer(size=20000, alpha=0.6)
+        self.memory = PrioritizedReplayBuffer(size=10000, alpha=0.75)
         self.gamma = 0.95  # Discount factor
         self.epsilon = 1.0  # Exploration rate
         self.epsilon_min = 0.05
-        self.epsilon_decay = (self.epsilon_min / self.epsilon) ** (1 / TRAINING_LENGTH)
-        self.learning_rate = 0.001
-        self.batch_size = 64
+        self.epsilon_decay = (self.epsilon_min / self.epsilon) ** (1 / TRAINING_LENGTH) - 0.001
+        self.learning_rate = 0.005
+        self.batch_size = 2048
         self.model = self.build_model()
         self.env = env  # Store the environment instance
         self.current_position = self.env.current_position  # Initialize with the current position from the environment
@@ -277,7 +277,7 @@ class TradingEnvironment:
         elif action == 1:  # Buy
             num_shares_to_buy = invest_amount // current_price
             if num_shares_to_buy > 0:
-                reward = self.calculate_reward(0)
+                reward = self.calculate_reward(0.5)
                 self.shares_held += num_shares_to_buy
                 self.current_balance -= num_shares_to_buy * current_price
                 self.current_position = {
@@ -300,13 +300,13 @@ class TradingEnvironment:
                 self.peak_trade_value = self.current_total_value
                 self.max_drawdown_in_trade = 0
             else:
-                reward = 0.2 # punish Sell if not 
+                reward = -0.2 # punish Sell if not 
                 
 
         elif action == 3:  # Short
             num_shares_to_short = invest_amount // current_price
             if num_shares_to_short > 0:
-                reward = self.calculate_reward(0)
+                reward = self.calculate_reward(0.5)
                 self.short_positions += num_shares_to_short
                 self.current_balance += num_shares_to_short * current_price
                 self.current_position = {
@@ -328,7 +328,7 @@ class TradingEnvironment:
                 self.peak_trade_value = self.current_total_value
                 self.max_drawdown_in_trade = 0
             else:
-                reward = 0.2 # Punish Cover if not shorting
+                reward = -0.2 # Punish Cover if not shorting
 
         
         
@@ -386,6 +386,7 @@ def process_episode(env, agent, initial_investment):
     episode_returns, episode_trade_gains = [], []
     max_drawdown = 0
     peak_value = initial_investment
+    replay_number = 0
     
     while not done:
         current_state = env.get_state()
@@ -394,6 +395,11 @@ def process_episode(env, agent, initial_investment):
         agent.remember(current_state, action, reward, next_state, done)
         total_reward += reward
         state = next_state
+        # replay_number += 1
+        # if replay_number % 5 == 0:
+        #     agent.replay()
+        # else:
+        #     break
 
         # Track wins/losses and returns for Sharpe ratio
         if single_profit > 0: wins += 1
@@ -475,7 +481,7 @@ def dqn_training(price_data, episodes, initial_investment=10000):
         total_profits.append(total_profit)
         
         # Replay and update epsilon
-        agent.replay()
+        # agent.replay()
         if agent.epsilon > agent.epsilon_min:
             agent.epsilon *= agent.epsilon_decay
         
