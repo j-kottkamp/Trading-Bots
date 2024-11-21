@@ -11,6 +11,10 @@ import time
 import cProfile
 import pstats
 
+# Häufiger Trainieren e.g. alle 10 Tage
+# GPU Training
+
+
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 print("Is cuDNN available: ", tf.test.is_built_with_cuda())
 
@@ -26,6 +30,10 @@ class PrioritizedReplayBuffer:
         self.total_priority_sum = 0  # Running sum of priorities
 
     def add(self, experience, priority):
+        state, action, reward, next_state, done = experience
+        # Ensure states and next_states are arrays with proper shape
+        state = np.asarray(state)
+        next_state = np.asarray(next_state)
         # Check if buffer is full
         if len(self.buffer) < self.size:
             self.buffer.append(experience)
@@ -78,19 +86,19 @@ class DQNAgent:
         self.epsilon_decay = (self.epsilon_min / self.epsilon) ** (1 / TRAINING_LENGTH) - 0.001
         self.learning_rate = 0.005
         self.batch_size = 2048
-        self.model = self.build_model()
         self.env = env  # Store the environment instance
         self.current_position = self.env.current_position  # Initialize with the current position from the environment
-
+        self.model = self.build_model()
+    
     def remember(self, state, action, reward, next_state, done):
         priority = abs(reward)
         self.memory.add((state, action, reward, next_state, done), priority)
-
+    
     def build_model(self):
         model = tf.keras.Sequential([
-            layers.Input(shape=(self.state_size,)),
-            layers.Dense(128, activation='relu'),
-            layers.Dense(128, activation='relu'),
+            layers.Input(shape=(self.env.time_steps, self.state_size)),  # Time steps and features
+            layers.GRU(64, return_sequences=True, activation='relu'),
+            layers.GRU(64, activation='relu'),
             layers.Dense(128, activation='relu'),
             layers.Dense(self.action_size, activation='linear')
         ])
@@ -98,44 +106,35 @@ class DQNAgent:
         return model
 
     def choose_action(self, state):
-        # Select action based on epsilon-greedy policy
+        state = np.expand_dims(state, axis=0)  # Shape: (1, time_steps, features)
         if np.random.rand() <= self.epsilon:
-            action = random.randrange(self.action_size)
-        else:
-            state = np.array(state).reshape((1, -1))
-            act_values = self.model.predict(state, verbose=0)
-            action = np.argmax(act_values[0])
-        
-        # Apply position logic using self.env.current_position
-        if self.env.current_position and self.env.current_position['type'] == 'buy':
-            if action == 3 or action == 4:  # Prevent short or cover when holding a long position
-                action = 0  # Set action to 'hold'
-        elif self.env.current_position and self.env.current_position['type'] == 'short':
-            if action == 1 or action == 2:  # Prevent buy or sell when holding a short position
-                action = 0  # Set action to 'hold'
-        elif self.env.current_position is None:
-            if action == 2 or action == 4:  # Prevent sell or cover if there's no open position
-                action = 0  # Set action to 'hold'
-        
-        return action
+            return random.randrange(self.action_size)
+        act_values = self.model.predict(state, verbose=0)
+        return np.argmax(act_values[0])
 
     def replay(self):
         if len(self.memory.buffer) < self.batch_size:
             return
-        
+
         minibatch, indices = self.memory.sample(self.batch_size)
-        states = np.array([exp[0] for exp in minibatch])
+        states = np.array([exp[0] for exp in minibatch])  # Shape: (batch_size, time_steps, features)
         actions = np.array([exp[1] for exp in minibatch])
         rewards = np.array([exp[2] for exp in minibatch])
-        next_states = np.array([exp[3] for exp in minibatch])
+        next_states = np.array([exp[3] for exp in minibatch])  # Shape: (batch_size, time_steps, features)
         dones = np.array([exp[4] for exp in minibatch])
+
+        # Predict Q-values for current and next states
+        target_q_values = rewards + self.gamma * (1 - dones) * np.amax(
+            self.model.predict(next_states, verbose=0), axis=1
+        )
+        current_q_values = self.model.predict(states, verbose=0)
         
-        targets = rewards + self.gamma * (1 - dones) * np.amax(self.model.predict(next_states, verbose=0), axis=1)
-        target_f = self.model.predict(states, verbose=0)
-        target_f[np.arange(self.batch_size), actions] = targets
-        
-        self.model.fit(states, target_f, epochs=1, verbose=0)
-        errors = np.abs(targets - target_f[np.arange(self.batch_size), actions])
+        for i, action in enumerate(actions):
+            current_q_values[i][action] = target_q_values[i]
+
+        self.model.fit(states, current_q_values, epochs=1, verbose=0)
+
+        errors = np.abs(target_q_values - current_q_values[np.arange(len(actions)), actions])
         self.memory.update_priorities(indices, errors)
 
     def load(self, name):
@@ -149,7 +148,9 @@ class DQNAgent:
 
 
 class TradingEnvironment:
-    def __init__(self, price_data, initial_investment=10000):
+    def __init__(self, price_data, initial_investment=10000, time_steps=30):
+        self.price_data = price_data
+        self.time_steps = time_steps
         self.price_data = price_data
         self.current_step = 0
         self.initial_investment = initial_investment
@@ -242,11 +243,14 @@ class TradingEnvironment:
         return self.get_state()
 
     def get_state(self):
-        return self.preprocessed_data[self.current_step]
+        if self.current_step < self.time_steps:
+            return np.zeros((self.time_steps, self.preprocessed_data.shape[1]))  # Shape: (time_steps, features)
+        return self.preprocessed_data[self.current_step - self.time_steps:self.current_step]  # Ensure this returns (time_steps, features)
 
     def step(self, action):
         # Current price of the asset
         current_price = self.preprocessed_data[self.current_step][0]
+        
 
         # Calculate the amount to invest based on current balance and investment percentage
         invest_amount = self.current_balance * self.investment_percentage
@@ -353,7 +357,7 @@ def initialize_environment(price_data, initial_investment=10000):
 
 def initialize_agent(env):
     """Initialize the DQN agent based on the environment's state size."""
-    state_size = len(env.get_state())
+    state_size = env.preprocessed_data.shape[1]  # This should be 39 if indicators are correct
     action_size = 5  # Buy, Sell, Hold, Short, Cover
     agent = DQNAgent(state_size, action_size, env)
     return agent
@@ -497,7 +501,7 @@ def dqn_training(price_data, episodes, initial_investment=10000):
     
     agent.save("D:/Python Codes/Python/DQN_Stuff/dqn_trading.weights.h5")
 
-
+5
 
 # Download price data and run the training
 TRAINING_LENGTH = 100
