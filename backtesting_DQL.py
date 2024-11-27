@@ -10,12 +10,16 @@ from collections import deque
 import time
 import cProfile
 import pstats
+import tensorflow as tf
 
 # Häufiger Trainieren e.g. alle 10 Tage
 # GPU Training
 
 
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+log_dir = "logs/profile/"
+writer = tf.summary.create_file_writer(log_dir)
+
+print("Num GPUs Available: ", tf.config.list_physical_devices('GPU'))
 print("Is cuDNN available: ", tf.test.is_built_with_cuda())
 
 # DQN Agent
@@ -85,7 +89,7 @@ class DQNAgent:
         self.epsilon_min = 0.05
         self.epsilon_decay = (self.epsilon_min / self.epsilon) ** (1 / TRAINING_LENGTH) - 0.001
         self.learning_rate = 0.005
-        self.batch_size = 2048
+        self.batch_size = 1024
         self.env = env  # Store the environment instance
         self.current_position = self.env.current_position  # Initialize with the current position from the environment
         self.model = self.build_model()
@@ -281,7 +285,7 @@ class TradingEnvironment:
         elif action == 1:  # Buy
             num_shares_to_buy = invest_amount // current_price
             if num_shares_to_buy > 0:
-                reward = self.calculate_reward(0.5)
+                reward = self.calculate_reward(0.3)
                 self.shares_held += num_shares_to_buy
                 self.current_balance -= num_shares_to_buy * current_price
                 self.current_position = {
@@ -310,7 +314,7 @@ class TradingEnvironment:
         elif action == 3:  # Short
             num_shares_to_short = invest_amount // current_price
             if num_shares_to_short > 0:
-                reward = self.calculate_reward(0.5)
+                reward = self.calculate_reward(0.3)
                 self.short_positions += num_shares_to_short
                 self.current_balance += num_shares_to_short * current_price
                 self.current_position = {
@@ -399,11 +403,10 @@ def process_episode(env, agent, initial_investment):
         agent.remember(current_state, action, reward, next_state, done)
         total_reward += reward
         state = next_state
-        # replay_number += 1
-        # if replay_number % 5 == 0:
-        #     agent.replay()
-        # else:
-        #     break
+        replay_number += 1
+        if replay_number % 5 == 0:
+            agent.replay()
+
 
         # Track wins/losses and returns for Sharpe ratio
         if single_profit > 0: wins += 1
@@ -501,10 +504,10 @@ def dqn_training(price_data, episodes, initial_investment=10000):
     
     agent.save("D:/Python Codes/Python/DQN_Stuff/dqn_trading.weights.h5")
 
-5
+
 
 # Download price data and run the training
-TRAINING_LENGTH = 100
+TRAINING_LENGTH = 10
 def main():
     SYMBOL = "SPY"
     START = datetime.datetime(2021, 1, 1)
