@@ -19,7 +19,6 @@ def StockData(start_year, end_year):
     YEARS = (END - START).days / 365.25
 
     price = yf.download(SYMBOL, start=START, end=END)
-    price = price.drop(['Volume', 'Adj Close'], axis=1)
     
     return price
 
@@ -27,14 +26,14 @@ def StockData(start_year, end_year):
 
     
 def CalculateIndicators(price):
-  # Calculate Indicators here
+    price['Rsi'] = ta.RSI(price['Adj Close'].values.flatten(), timeperiod = 14)
 
 def SetStrategy(price):
-  # price["Long"] = Strategy here
+    price["Long"] = np.where(price.Rsi < 70, True, False)
     
 def CalculateReturn(price):
     # Benchmark Performance
-    price['Return'] = price.Close / price.Close.shift(1)
+    price['Return'] = price['Adj Close'] / price['Adj Close'].shift(1)
     price.Return.iat[0] = 1
     price['Bench_Bal'] = STARTING_BALANCE * price.Return.cumprod()
     price['Bench_Peak'] = price.Bench_Bal.cummax()
