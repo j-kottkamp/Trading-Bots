@@ -104,14 +104,22 @@ def PlotGarch(fitted_egarch):
     fitted_egarch.plot(annualize='D')
     plt.show()
 
-def Switch(data, forecast, IsGarch):
-    if IsGarch:
-        value = Garch(data, forecast)
-        return value
-    else:
-        value = Egarch(data, forecast) 
-        return value
+def Switch(data, forecast, IsGarch, IsArima):  
+    garch_functions = {
+        0: Garch,
+        1: Egarch
+    }
     
+    arima_functions = {
+        0: Arima,
+        1: OptArima
+    }
+    
+    garch_forecast = garch_functions[IsGarch](data, forecast)
+    
+    arima_forecast = arima_functions[IsArima](data, forecast)
+    
+    return garch_forecast, arima_forecast
 
     
 def main():
@@ -119,20 +127,18 @@ def main():
     start = '2023-01-01'
     end = '2024-12-09'
     forecast = 5
-    IsGarch = True
+    Garch = 0
+    Arima = 0
     
     data = GetData(Ticker, start, end, forecast)
     
-    arima_forecast = Arima(data, forecast)
-    
-    garch_forecast = Switch(data, forecast, Garch)
+    garch_forecast, arima_forecast = Switch(data, forecast, Garch, Arima)
     
     predicted_prices, forecast_dates = CombArimaGarch(data, forecast, arima_forecast, garch_forecast)
     
     PrintForecast(predicted_prices, forecast_dates)
-    
+
     PlotForecast(data, predicted_prices, forecast_dates, Ticker)
-    # TODO predicted_price sollte anders generiert werden als vol + forecast
     
     
 
