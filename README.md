@@ -21,7 +21,7 @@ The repository serves as a learning tool to:
 
 ---
 
-## ⚙️ Included Strategies
+## ⚙️ Included Strategies (see Branches)
 
 ### 1. **Buy-the-Dip**
 A naive mean-reversion strategy that attempts to buy assets after significant short-term losses.  
